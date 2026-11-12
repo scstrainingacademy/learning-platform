@@ -214,7 +214,6 @@ function HomePage() {
   const [wishlistCourseIds, setWishlistCourseIds] = useState([]);
   const [cartError, setCartError] = useState('');
   const [publicContent, setPublicContent] = useState({ banners: [], announcements: [], promotions: [] });
-  const [contentError, setContentError] = useState('');
   const [featuredCoursesError, setFeaturedCoursesError] = useState('');
   const [featuredCourses, setFeaturedCourses] = useState([]);
   const partnerTrackRef = useRef(null);
@@ -243,7 +242,7 @@ function HomePage() {
   useEffect(() => {
     getJson('/api/platform/content')
       .then(setPublicContent)
-      .catch((error) => setContentError(error.message));
+      .catch((error) => console.error('Failed to load academy updates:', error));
   }, []);
 
   useEffect(() => {
@@ -327,9 +326,8 @@ function HomePage() {
     <div className={`marketing-page ${homeTailwindStyles}`}>
       <Navbar />
 
-      {(contentError || publicContent.banners.length > 0 || publicContent.announcements.length > 0 || publicContent.promotions.length > 0) && (
+      {(publicContent.banners.length > 0 || publicContent.announcements.length > 0 || publicContent.promotions.length > 0) && (
         <section className="space-y-2 bg-[#f7f5fb] px-5 py-3 sm:px-8" aria-label="Academy updates">
-          {contentError && <p className="mx-auto my-0 max-w-6xl text-sm text-red-700" role="status">Academy updates are temporarily unavailable.</p>}
           {publicContent.banners.map((banner) => (
             <article className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3" key={banner.id}>
               <div><h2 className="m-0 text-sm font-bold text-slate-900">{banner.title}</h2><p className="mb-0 mt-1 text-sm text-slate-600">{banner.body}</p></div>
