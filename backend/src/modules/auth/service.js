@@ -63,14 +63,20 @@ async function sendOtp(identifier, otp) {
     if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
       throw new Error('Gmail SMTP credentials are not configured. Set SMTP_USER and SMTP_PASSWORD.');
     }
+    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const smtpPort = Number(process.env.SMTP_PORT || 465);
+    const smtpSecure = process.env.SMTP_SECURE !== 'false';
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT || 465),
-      secure: process.env.SMTP_SECURE !== 'false',
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      requireTLS: !smtpSecure,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
       connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 10000),
       greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000),
-      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 15000),
+      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
+      tls: { servername: smtpHost, minVersion: 'TLSv1.2' },
+      family: 4,
     });
     await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,

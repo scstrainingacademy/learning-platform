@@ -36,6 +36,7 @@ function isAllowedOrigin(origin) {
     if (!['http:', 'https:'].includes(protocol)) return false;
     if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
     if (hostname === 'scstrainingacademy.com' || hostname.endsWith('.scstrainingacademy.com')) return true;
+    if (hostname === 'scstrainingacademy.netlify.app' || hostname.endsWith('--scstrainingacademy.netlify.app')) return true;
   } catch {
     return false;
   }
