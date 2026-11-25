@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '../../utils/mail.js';
 import { connectDatabase } from '../auth/service.js';
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -260,16 +260,10 @@ function otpHash(otp) {
   return crypto.createHmac('sha256', process.env.OTP_SECRET).update(`admin-email-change:${otp}`).digest('hex');
 }
 
-function createMailer() {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
-    throw makeError('SMTP is not configured. Set SMTP_USER and SMTP_PASSWORD to send admin security emails.', 503);
+function ensureEmailDeliveryConfigured() {
+  if (!process.env.RESEND_API_KEY && (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD)) {
+    throw makeError('Email delivery is not configured. Set RESEND_API_KEY, or SMTP_USER and SMTP_PASSWORD.', 503);
   }
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT || 465),
-    secure: process.env.SMTP_SECURE !== 'false',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
-  });
 }
 
 async function ensureSecurityIndexes(database) {
@@ -332,8 +326,8 @@ export async function requestAdminEmailChange(admin, { email: rawEmail }) {
   };
   await challenges.insertOne(challenge);
   try {
-    await createMailer().sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    ensureEmailDeliveryConfigured();
+    await sendEmail({
       to: email,
       subject: 'Verify your SCS Academy admin email',
       text: `Your admin email verification code is ${otp}. It expires in 10 minutes.`,
@@ -424,8 +418,8 @@ export async function requestAdminPasswordReset(admin) {
     }
     resetUrl = new URL('/', appUrl);
     resetUrl.searchParams.set('passwordResetToken', token);
-    await createMailer().sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    ensureEmailDeliveryConfigured();
+    await sendEmail({
       to: admin.email,
       subject: 'Reset your SCS Academy admin password',
       text: `Use this one-time link to reset your admin password. It expires in 30 minutes:\n\n${resetUrl.toString()}\n\nIf you did not request this, you can ignore this email.`,
@@ -434,7 +428,7 @@ export async function requestAdminPasswordReset(admin) {
     await resetTokens.deleteOne({ tokenHash });
     console.error('Admin password reset email delivery failed:', error);
     if (error.statusCode) throw error;
-    throw makeError('The password reset email could not be sent. Check SMTP configuration and try again.', 503);
+    throw makeError('The password reset email could not be sent. Check email delivery configuration and try again.', 503);
   }
   return { message: `A password reset link has been sent to ${admin.email}.` };
 }
