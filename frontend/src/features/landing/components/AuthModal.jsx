@@ -65,7 +65,6 @@ function AuthModal() {
     postJson('/api/auth/request-otp', { identifier, name, purpose: mode })
       .then((result) => {
         setStep('otp');
-        setNotice(result.message);
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setBusy(false));
@@ -84,7 +83,6 @@ function AuthModal() {
           setIdentifier(result.identifier);
           setOtpPurpose('two-factor-login');
           setStep('otp');
-          setNotice(result.message);
           return;
         }
         localStorage.setItem('scs_session_token', result.token);
