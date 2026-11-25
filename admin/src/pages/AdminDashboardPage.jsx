@@ -1101,7 +1101,7 @@ function AdminDashboardPage({ onLogout }) {
               </nav>
             </div>
             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-              <a className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-violet-700 no-underline transition hover:bg-violet-50 xl:inline-flex" href="http://127.0.0.1:5173" rel="noreferrer" target="_blank">Open learner site <ArrowUpRight size={15} /></a>
+              <a className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-violet-700 no-underline transition hover:bg-violet-50 xl:inline-flex" href={import.meta.env.VITE_LEARNER_SITE_URL || 'https://scstrainingacademy.com'} rel="noreferrer" target="_blank">Open learner site <ArrowUpRight size={15} /></a>
               <div className="relative ml-1 border-l border-slate-200 pl-2 sm:ml-2 sm:pl-3">
                 <button
                   aria-expanded={profileOpen}

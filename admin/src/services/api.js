@@ -1,5 +1,13 @@
 import { clearAdminToken, getAdminToken } from '../auth/adminSession.js';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+function resolveApiUrl(url) {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!API_BASE_URL) return url;
+  return `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 function authHeaders(initial = {}) {
   const headers = new Headers(initial);
   const token = getAdminToken();
@@ -8,7 +16,7 @@ function authHeaders(initial = {}) {
 }
 
 export async function apiRequest(url, options) {
-  const response = await fetch(url, { ...options, headers: authHeaders(options?.headers || {}) });
+  const response = await fetch(resolveApiUrl(url), { ...options, headers: authHeaders(options?.headers || {}) });
   if (response.status === 401) {
     clearAdminToken();
     window.dispatchEvent(new Event('admin-session-expired'));
@@ -24,7 +32,7 @@ export async function apiRequest(url, options) {
 }
 
 export async function downloadAdminFile(url, suggestedName) {
-  const response = await fetch(url, { headers: authHeaders() });
+  const response = await fetch(resolveApiUrl(url), { headers: authHeaders() });
   if (!response.ok) {
     let message = 'The download could not be completed.';
     try {

@@ -1,3 +1,11 @@
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+function resolveApiUrl(url) {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!API_BASE_URL) return url;
+  return `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 function parseJsonResponse(text) {
   if (!text.trim()) return null;
   try {
@@ -10,7 +18,7 @@ function parseJsonResponse(text) {
 
 async function requestJson(url, options) {
   const token = localStorage.getItem('scs_session_token');
-  const response = await fetch(url, {
+  const response = await fetch(resolveApiUrl(url), {
     ...options,
     headers: {
       ...(options?.headers || {}),
@@ -33,7 +41,7 @@ export function getJson(url) {
 
 export async function getBlob(url) {
   const token = localStorage.getItem('scs_session_token');
-  const response = await fetch(url, {
+  const response = await fetch(resolveApiUrl(url), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) {
