@@ -68,6 +68,9 @@ async function sendOtp(identifier, otp) {
       port: Number(process.env.SMTP_PORT || 465),
       secure: process.env.SMTP_SECURE !== 'false',
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
+      connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 10000),
+      greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000),
+      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 15000),
     });
     await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
