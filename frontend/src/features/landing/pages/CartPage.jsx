@@ -87,9 +87,9 @@ function CartPage() {
 
         {cart.length ? (
           <div className="mt-6 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-12">
-            <section aria-label="Courses in your cart">
+            <section aria-label="Items in your cart">
               <div className="border-b border-[#e7e5ed] pb-2.5 text-base font-semibold text-[#29283a]">
-                {cart.length} {cart.length === 1 ? 'Course' : 'Courses'} in Cart
+                {cart.length} {cart.length === 1 ? 'Item' : 'Items'} in Cart
               </div>
               <div>
                 {cart.map((course) => (
@@ -103,15 +103,16 @@ function CartPage() {
                       <h2 className="mb-0 mt-2 font-[Manrope] text-base font-bold leading-snug text-[#29283a] sm:text-[17px]">{course.title}</h2>
                       <p className="mb-0 mt-1 text-xs text-[#686674]">By {course.instructor || 'SCS Academy'}</p>
                       {course.description && <p className="mb-0 mt-2 max-w-2xl text-sm leading-5 text-[#686674]">{course.description}</p>}
-                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+                      {course.productType !== 'mock-interview' && <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
                         {course.badge && <span className="rounded bg-[#e7f2ef] px-2 py-1 text-[11px] font-bold text-[#385f53]">{course.badge}</span>}
                         <span className="font-bold text-[#984a24]">{course.rating || '4.8'}</span>
                         <span className="flex items-center gap-0.5 text-[#c6781b]" aria-label={`${course.rating || '4.8'} out of 5 stars`}>
                           {Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill="currentColor" aria-hidden="true" />)}
                         </span>
                         {course.ratingsCount && <span className="text-[#777582]">({course.ratingsCount} ratings)</span>}
-                      </div>
+                      </div>}
                       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-[#686674]">
+                        {course.productType === 'mock-interview' && <span className="inline-flex items-center gap-1.5">{course.category}</span>}
                         {course.duration && <span className="inline-flex items-center gap-1.5"><Clock3 size={14} className="text-[#A52A32]" /> Duration: {course.duration}</span>}
                         {course.hours && <span className="inline-flex items-center gap-1.5"><BookOpen size={14} className="text-[#A52A32]" /> Course hours: {course.hours}</span>}
                       </div>
@@ -169,7 +170,7 @@ function CartPage() {
             <div>
               <ShoppingCart className="mx-auto text-[#7A1F2B]" size={32} />
               <h2 className="mb-0 mt-4 font-[Manrope] text-xl font-bold">Your cart is empty</h2>
-              <p className="mb-5 mt-2 text-sm text-[#686674]">Add a course to see it here and continue to checkout.</p>
+              <p className="mb-5 mt-2 text-sm text-[#686674]">Add a course or mock interview to see it here and continue to checkout.</p>
               <Link to="/courses" className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#7A1F2B] px-5 text-sm font-bold text-white no-underline hover:bg-[#641a25]">Browse courses</Link>
             </div>
             {savedCourses.length > 0 && (

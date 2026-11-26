@@ -27,7 +27,7 @@ function allocateOrderCourseAmounts(order) {
   const items = Array.isArray(order.courseItems) ? order.courseItems : [];
   if (!items.length) return new Map();
 
-  const amount = Number(order.amount || 0);
+  const amount = Number(order.courseAmount ?? order.amount ?? 0);
   const totalMinor = Math.max(0, Math.round((Number.isFinite(amount) ? amount : 0) * 100));
   const weights = items.map((item) => Math.max(0, Number(item.price) || 0));
   const actualWeightTotal = weights.reduce((sum, weight) => sum + weight, 0);
@@ -46,8 +46,10 @@ function allocateOrderCourseAmounts(order) {
 }
 
 async function grantOrderEnrollments(database, userId, order) {
+  const courseIds = Array.isArray(order.courseIds) ? order.courseIds : [];
+  if (!courseIds.length) return;
   const courseAmounts = allocateOrderCourseAmounts(order);
-  await database.collection('enrollments').bulkWrite(order.courseIds.map((courseId) => ({
+  await database.collection('enrollments').bulkWrite(courseIds.map((courseId) => ({
     updateOne: {
       filter: { userId, courseId },
       update: {
@@ -130,8 +132,13 @@ export async function createPaymentOrder(request, response, next) {
     const courseIds = Array.isArray(request.body?.courseIds)
       ? [...new Set(request.body.courseIds.map(Number))]
       : [];
-    if (!courseIds.length || courseIds.length > 20 || courseIds.some((id) => !Number.isSafeInteger(id) || id < 1)) {
-      throw makeError('Select between 1 and 20 valid courses to continue.', 400);
+    const mockInterviewIds = Array.isArray(request.body?.mockInterviewIds)
+      ? [...new Set(request.body.mockInterviewIds.map(Number))]
+      : [];
+    if ((!courseIds.length && !mockInterviewIds.length)
+      || courseIds.length + mockInterviewIds.length > 20
+      || [...courseIds, ...mockInterviewIds].some((id) => !Number.isSafeInteger(id) || id < 1)) {
+      throw makeError('Select between 1 and 20 valid items to continue.', 400);
     }
 
     const database = await initializeCatalog();
@@ -140,17 +147,27 @@ export async function createPaymentOrder(request, response, next) {
       .toArray();
     if (courses.length !== courseIds.length) throw makeError('One or more selected courses are no longer available.', 400);
 
+    const mockInterviews = await database.collection('mock_interviews')
+      .find({ id: { $in: mockInterviewIds }, status: 'published' })
+      .toArray();
+    if (mockInterviews.length !== mockInterviewIds.length) {
+      throw makeError('One or more selected mock interviews are no longer available.', 400);
+    }
+
     const alreadyEnrolled = await database.collection('enrollments').findOne({
       userId: user._id,
       courseId: { $in: courseIds },
     });
     if (alreadyEnrolled) throw makeError('You are already enrolled in one of the selected courses.', 409);
 
-    const subtotal = courses.reduce((sum, course) => sum + Number(course.price), 0);
+    const courseSubtotal = courses.reduce((sum, course) => sum + Number(course.price), 0);
+    const mockInterviewSubtotal = mockInterviews.reduce((sum, interview) => sum + Number(interview.price), 0);
+    const subtotal = courseSubtotal + mockInterviewSubtotal;
     let discount = 0;
     let coupon;
     const couponCode = String(request.body?.couponCode || '').trim().toUpperCase();
     if (couponCode) {
+      if (!courseIds.length) throw makeError('Coupons can only be applied to course purchases.', 400);
       coupon = await database.collection('coupons').findOne({ code: couponCode, status: 'active' });
       const now = new Date();
       if (!coupon || (coupon.startsAt && coupon.startsAt > now) || (coupon.endsAt && coupon.endsAt < now)
@@ -160,17 +177,28 @@ export async function createPaymentOrder(request, response, next) {
       }
       const applicableSubtotal = coupon.courseIds?.length
         ? courses.filter((course) => coupon.courseIds.includes(course.id)).reduce((sum, course) => sum + Number(course.price), 0)
-        : subtotal;
+        : courseSubtotal;
       discount = coupon.discountType === 'percent'
         ? Math.round(applicableSubtotal * coupon.value / 100)
         : Math.min(applicableSubtotal, coupon.value);
     }
     const amount = Math.max(0, subtotal - discount);
+    const courseAmount = Math.max(0, courseSubtotal - discount);
     const courseItems = courses.map((course) => ({
       courseId: course.id,
       title: course.title,
       price: Number(course.price) || 0,
     }));
+    const mockInterviewItems = mockInterviews.map((interview) => ({
+      mockInterviewId: interview.id,
+      title: `${interview.type} Mock Interview`,
+      type: interview.type,
+      interviewer: interview.interviewer,
+      price: Number(interview.price) || 0,
+    }));
+    const courseTitles = courses.map((course) => course.title);
+    const mockInterviewTitles = mockInterviewItems.map((item) => item.title);
+    const itemTitles = [...courseTitles, ...mockInterviewTitles];
     if (amount === 0) {
       const order = {
         razorpayOrderId: `free_${crypto.randomUUID()}`,
@@ -178,10 +206,15 @@ export async function createPaymentOrder(request, response, next) {
         userEmail: user.identifier,
         userName: user.name,
         courseIds,
-        courseTitles: courses.map((course) => course.title),
+        mockInterviewIds,
+        courseTitles,
+        mockInterviewTitles,
+        itemTitles,
         courseItems,
+        mockInterviewItems,
         subtotal,
         discount,
+        courseAmount,
         couponCode: coupon?.code || '',
         amount: 0,
         currency: 'INR',
@@ -194,8 +227,16 @@ export async function createPaymentOrder(request, response, next) {
       await countCouponUseOnce(database, savedOrder.insertedId, order.couponCode);
       return response.status(201).json({
         freeEnrollment: true,
-        message: 'Coupon applied. Course access is active.',
-        summary: { subtotal, discount, amount, courseTitles: order.courseTitles },
+        message: 'Your purchase is complete.',
+        summary: {
+          subtotal,
+          discount,
+          amount,
+          courseIds: order.courseIds,
+          mockInterviewIds: order.mockInterviewIds,
+          courseTitles: order.courseTitles,
+          itemTitles: order.itemTitles,
+        },
       });
     }
 
@@ -205,7 +246,7 @@ export async function createPaymentOrder(request, response, next) {
       amount: Math.round(amount * 100),
       currency: 'INR',
       receipt,
-      notes: { userId: String(user._id), courseIds: courseIds.join(',') },
+      notes: { userId: String(user._id), courseIds: courseIds.join(','), mockInterviewIds: mockInterviewIds.join(',') },
     });
     if (razorpayOrder.amount !== Math.round(amount * 100) || razorpayOrder.currency !== 'INR') {
       throw makeError('Razorpay created an order with an unexpected amount or currency.', 502);
@@ -217,10 +258,15 @@ export async function createPaymentOrder(request, response, next) {
       userEmail: user.identifier,
       userName: user.name,
       courseIds,
-      courseTitles: courses.map((course) => course.title),
+      mockInterviewIds,
+      courseTitles,
+      mockInterviewTitles,
+      itemTitles,
       courseItems,
+      mockInterviewItems,
       subtotal,
       discount,
+      courseAmount,
       couponCode: coupon?.code || '',
       amount,
       amountMinor: razorpayOrder.amount,
@@ -232,7 +278,13 @@ export async function createPaymentOrder(request, response, next) {
     response.status(201).json({
       keyId: process.env.RAZORPAY_KEY_ID,
       order: { id: razorpayOrder.id, amount: razorpayOrder.amount, currency: razorpayOrder.currency },
-      summary: { subtotal, discount, amount, courseTitles: order.courseTitles },
+      summary: {
+        subtotal,
+        discount,
+        amount,
+        courseTitles: order.courseTitles,
+        itemTitles: order.itemTitles,
+      },
     });
   } catch (error) {
     next(error);
@@ -260,7 +312,15 @@ export async function verifyPaymentSignature(request, response, next) {
       if (order.razorpayPaymentId !== paymentId) throw makeError('This order was verified with a different payment.', 409);
       await grantOrderEnrollments(database, user._id, order);
       await countCouponUseOnce(database, order._id, order.couponCode);
-      return response.json({ success: true, message: 'Payment was already verified.' });
+      return response.json({
+        success: true,
+        message: 'Payment was already verified.',
+        summary: {
+          courseIds: order.courseIds || [],
+          mockInterviewIds: order.mockInterviewIds || [],
+          itemTitles: order.itemTitles || order.courseTitles || [],
+        },
+      });
     }
     if (!['pending', 'failed'].includes(order.status)) {
       throw makeError('This order cannot be verified in its current state.', 409);
@@ -274,7 +334,15 @@ export async function verifyPaymentSignature(request, response, next) {
       payment = await razorpay.payments.capture(paymentId, Number(order.amountMinor), order.currency);
     }
     await settleCapturedPayment(database, order, payment);
-    response.json({ success: true, message: 'Payment verified and course access granted.' });
+    response.json({
+      success: true,
+      message: 'Payment verified and purchase recorded.',
+      summary: {
+        courseIds: order.courseIds || [],
+        mockInterviewIds: order.mockInterviewIds || [],
+        itemTitles: order.itemTitles || order.courseTitles || [],
+      },
+    });
   } catch (error) {
     next(error);
   }

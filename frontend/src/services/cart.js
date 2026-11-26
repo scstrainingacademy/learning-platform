@@ -52,6 +52,7 @@ export function addToCart(course) {
 
   const item = {
     id,
+    productType: course.productType || 'course',
     title: course.title,
     price: normalizePrice(course.price),
     image: course.image || '',
@@ -61,7 +62,7 @@ export function addToCart(course) {
     instructor: course.instructor || course.author || 'SCS Academy',
     rating: course.rating || '4.8',
     ratingsCount: course.ratingsCount || '',
-    level: course.level || 'All Levels',
+    level: course.productType === 'mock-interview' ? '' : course.level || 'All Levels',
     hours: course.hours || '',
     badge: course.badge || '',
     premium: course.premium ?? false,

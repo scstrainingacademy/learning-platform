@@ -65,12 +65,13 @@ function PurchaseHistoryPage() {
               </div>
               {visibleOrders.map((order) => {
                 const hasReceipt = ['paid', 'partially_refunded', 'refunded'].includes(order.status);
+                const itemTitles = order.itemTitles || order.courseTitles || [];
                 return (
                   <article className="grid grid-cols-[minmax(280px,2.4fr)_minmax(100px,.8fr)_minmax(110px,.8fr)_minmax(120px,1fr)_200px] items-center gap-4 border-b border-slate-200 px-2 py-4 text-sm" key={order.razorpayOrderId}>
                     <div className="flex min-w-0 items-center gap-4">
                       <ShoppingCart className="shrink-0 text-black" size={18} aria-hidden="true" />
                       <div className="min-w-0">
-                        <h2 className="m-0 truncate text-sm font-medium text-black" title={order.courseTitles?.join(', ') || 'Course purchase'}>{order.courseTitles?.join(', ') || 'Course purchase'}</h2>
+                        <h2 className="m-0 truncate text-sm font-medium text-black" title={itemTitles.join(', ') || 'Purchase'}>{itemTitles.join(', ') || 'Purchase'}</h2>
                         <p className="m-0 mt-1 text-sm capitalize text-black">Status: {String(order.status).replaceAll('_', ' ')}{order.refundedAmount ? ` · Refunded ₹${Number(order.refundedAmount).toLocaleString('en-IN')}` : ''}</p>
                       </div>
                     </div>
@@ -80,7 +81,7 @@ function PurchaseHistoryPage() {
                     <div className="flex items-center justify-end gap-3">
                       {hasReceipt && (
                         <>
-                          <button type="button" disabled className="min-w-[86px] cursor-not-allowed rounded-md border border-[#7A1F2B] bg-transparent px-3 py-1.5 text-sm font-semibold text-[#7A1F2B]"><ReceiptText className="mr-1 inline" size={13} />Receipt</button>
+                          <button type="button" onClick={() => viewReceipt(order.razorpayOrderId)} className="min-w-[86px] rounded-md border border-[#7A1F2B] bg-transparent px-3 py-1.5 text-sm font-semibold text-[#7A1F2B]"><ReceiptText className="mr-1 inline" size={13} />Receipt</button>
                           <button type="button" disabled className="min-w-[86px] cursor-not-allowed rounded-md border border-[#7A1F2B] bg-transparent px-3 py-1.5 text-sm font-semibold text-[#7A1F2B]">Invoice</button>
                         </>
                       )}
@@ -119,7 +120,7 @@ function PurchaseHistoryPage() {
         )}
         {receipt && <section className="receipt-print mt-7 border-t border-slate-200 pt-6">
           <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="m-0 text-xs font-bold uppercase tracking-wider text-[#7A1F2B]">{receipt.issuer} · Payment receipt</p><h2 className="mb-1 mt-2 text-xl font-bold">{receipt.status === 'refunded' ? 'Refunded purchase' : 'Payment received'}</h2><p className="m-0 text-sm text-slate-600">{receipt.paidAt ? new Date(receipt.paidAt).toLocaleString() : ''}</p></div><button className="print:hidden rounded-lg bg-[#7A1F2B] px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()}>Print / Save PDF</button></div>
-          <dl className="mt-5 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Receipt</dt><dd className="m-0 break-all font-semibold">{receipt.receipt || receipt.razorpayOrderId}</dd></div><div><dt className="text-slate-500">Payment ID</dt><dd className="m-0 break-all font-semibold">{receipt.razorpayPaymentId || 'No gateway payment ID'}</dd></div><div><dt className="text-slate-500">Courses</dt><dd className="m-0 font-semibold">{receipt.courseTitles?.join(', ')}</dd></div><div><dt className="text-slate-500">Paid</dt><dd className="m-0 font-semibold">₹{Number(receipt.amount).toLocaleString('en-IN')} {receipt.currency}</dd></div>{receipt.discount > 0 && <div><dt className="text-slate-500">Discount</dt><dd className="m-0 font-semibold">₹{Number(receipt.discount).toLocaleString('en-IN')} ({receipt.couponCode})</dd></div>}</dl>
+          <dl className="mt-5 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Receipt</dt><dd className="m-0 break-all font-semibold">{receipt.receipt || receipt.razorpayOrderId}</dd></div><div><dt className="text-slate-500">Payment ID</dt><dd className="m-0 break-all font-semibold">{receipt.razorpayPaymentId || 'No gateway payment ID'}</dd></div><div><dt className="text-slate-500">Items</dt><dd className="m-0 font-semibold">{(receipt.itemTitles || receipt.courseTitles || []).join(', ')}</dd></div><div><dt className="text-slate-500">Paid</dt><dd className="m-0 font-semibold">₹{Number(receipt.amount).toLocaleString('en-IN')} {receipt.currency}</dd></div>{receipt.discount > 0 && <div><dt className="text-slate-500">Discount</dt><dd className="m-0 font-semibold">₹{Number(receipt.discount).toLocaleString('en-IN')} ({receipt.couponCode})</dd></div>}</dl>
         </section>}
       </main>
       <Footer />

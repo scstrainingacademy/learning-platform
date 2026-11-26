@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import courseRoutes from './modules/courses/routes.js';
+import mockInterviewRoutes from './modules/mock-interviews/routes.js';
 import enrollmentRoutes from './modules/enrollments/routes.js';
 import authRoutes from './modules/auth/routes.js';
 import paymentRoutes from './modules/payments/routes.js';
@@ -60,6 +61,7 @@ app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok', service: 'skillpath-backend' });
 });
 app.use('/api/courses', courseRoutes);
+app.use('/api/mock-interviews', mockInterviewRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin-auth', adminAuthRoutes);

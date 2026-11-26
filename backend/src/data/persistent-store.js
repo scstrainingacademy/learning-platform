@@ -9,8 +9,10 @@ export async function initializeCatalog() {
       const database = await getDatabase();
       const courses = database.collection('courses');
       const enrollments = database.collection('enrollments');
+      const mockInterviews = database.collection('mock_interviews');
       await Promise.all([
         courses.createIndex({ id: 1 }, { unique: true }),
+        mockInterviews.createIndex({ id: 1 }, { unique: true }),
         enrollments.createIndex({ courseId: 1, userId: 1 }, { unique: true }),
         database.collection('orders').createIndex({ razorpayOrderId: 1 }, { unique: true, sparse: true }),
         database.collection('coupons').createIndex({ code: 1 }, { unique: true }),
@@ -30,9 +32,15 @@ export async function initializeCatalog() {
         })));
       }
       const latestCourse = await courses.find().sort({ id: -1 }).limit(1).next();
+      const latestMockInterview = await mockInterviews.find().sort({ id: -1 }).limit(1).next();
       await database.collection('sequences').updateOne(
         { _id: 'courses' },
         { $max: { value: Number(latestCourse?.id || 0) } },
+        { upsert: true },
+      );
+      await database.collection('sequences').updateOne(
+        { _id: 'mock-interviews' },
+        { $max: { value: Number(latestMockInterview?.id || 0) } },
         { upsert: true },
       );
       return database;

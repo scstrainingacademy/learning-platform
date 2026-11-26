@@ -7,24 +7,47 @@ import { addToCart, getCart, subscribeToCart } from '../../../services/cart.js';
 import { getWishlist, subscribeToWishlist, toggleWishlist } from '../../../services/wishlist.js';
 
 function CourseCard({ course, enrolled = false, isInCart = false, onAddToCart, onGoToCart, onBuyNow }) {
+  const rating = String(course.rating ?? '').trim();
+  const hasNumericRating = rating !== '' && Number.isFinite(Number(rating));
   return (
     <article className={`flex overflow-hidden rounded-xl border border-[#e1e4eb] bg-white transition duration-200 hover:-translate-y-0.5 hover:border-[#c9c1ee] hover:shadow-[0_8px_20px_rgba(27,39,58,0.08)] ${enrolled ? 'max-w-[520px] flex-row max-[520px]:flex-col' : 'flex-col'}`}>
-      <img className={enrolled ? 'h-[150px] w-[160px] shrink-0 object-cover max-[520px]:h-28 max-[520px]:w-full' : 'h-[120px] w-full object-cover'} src={course.image} alt="" loading="lazy" />
+      {course.productType === 'mock-interview' && !enrolled ? (
+        <div className="aspect-video w-full overflow-hidden bg-slate-50">
+          <img
+            className="h-full w-full object-cover"
+            src={course.image}
+            alt=""
+            loading="lazy"
+            style={{
+              objectPosition: `${course.imagePositionX}% ${course.imagePositionY}%`,
+              transform: `scale(${course.imageZoom})`,
+            }}
+          />
+        </div>
+      ) : (
+        <img className={enrolled ? 'h-[150px] w-[160px] shrink-0 object-cover max-[520px]:h-28 max-[520px]:w-full' : 'h-[150px] w-full object-cover'} src={course.image} alt="" loading="lazy" />
+      )}
       <div className="flex flex-1 flex-col p-3.5">
-        <div className={`flex items-center justify-between gap-3 ${enrolled ? 'hidden' : ''}`}>
-          <span className="rounded-full bg-[#f1effb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6048b7]">{course.level}</span>
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-[#687789]"><Star size={12} className="fill-amber-400 text-amber-500" /> {course.rating}</span>
-        </div>
+        {!enrolled && <div className="flex items-center justify-between gap-3">
+          {course.productType === 'mock-interview'
+            ? <span className="rounded-full bg-[#f1effb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6048b7]">Interview</span>
+            : <>
+                <span className="rounded-full bg-[#f1effb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6048b7]">{course.level}</span>
+                {hasNumericRating
+                  ? <span className="flex items-center gap-1 text-[11px] font-semibold text-[#687789]"><Star size={12} className="fill-amber-400 text-amber-500" /> {rating}</span>
+                  : <span className="rounded-full bg-[#fffaf0] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#c98718]">New</span>}
+              </>}
+        </div>}
         <h3 className={`${enrolled ? 'mt-1' : 'mt-2.5'} font-[Manrope] text-[15px] font-bold leading-[1.2] text-[#112e49]`}>{enrolled ? 'Continue with your course' : course.title}</h3>
-        <p className={`mt-1.5 text-xs leading-5 text-[#687789] ${enrolled ? 'hidden' : ''}`}>{course.description}</p>
-        <div className={`mt-3 flex gap-4 border-t border-[#edf0f4] pt-3 text-[11px] font-semibold text-[#687789] ${enrolled ? 'hidden' : ''}`}>
-          <span className="flex items-center gap-1"><Clock3 size={13} /> {course.duration}</span>
-          <span className="flex items-center gap-1"><BookOpen size={13} /> {course.hours}</span>
-        </div>
-        {!enrolled && <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <span className="rounded border border-[#a9dfe0] bg-[#e1f7f5] px-2 py-0.5 text-[10px] font-bold text-[#19727b]">{course.badge || 'Course'}</span>
-          <span className="rounded border border-[#dfe3ea] px-2 py-0.5 text-[10px] font-medium text-[#788598]">Course</span>
-          <span className="rounded border border-[#eadfbd] bg-[#fffaf0] px-2 py-0.5 text-[10px] font-bold text-[#c98718]"><Star size={10} className="mr-0.5 inline fill-current" /> {course.rating}</span>
+        {!enrolled && (course.productType === 'mock-interview'
+          ? <div className="mt-1.5 space-y-0.5 text-xs leading-5 text-[#687789]">
+              {course.practiceFor && <p>{course.practiceFor}</p>}
+              <p><span className="font-semibold text-[#34495e]">Interviewer:</span> {course.interviewer}</p>
+            </div>
+          : <p className="mt-1.5 text-xs leading-5 text-[#687789]">{course.description}</p>)}
+        {!enrolled && (course.duration || course.hours) && <div className="mt-3 flex gap-4 border-t border-[#edf0f4] pt-3 text-[11px] font-semibold text-[#687789]">
+          {course.duration && <span className="flex items-center gap-1"><Clock3 size={13} /> {course.duration}</span>}
+          {course.hours && <span className="flex items-center gap-1"><BookOpen size={13} /> {course.hours}</span>}
         </div>}
         {enrolled ? (
           <div className="mt-auto pt-3.5">
@@ -34,10 +57,13 @@ function CourseCard({ course, enrolled = false, isInCart = false, onAddToCart, o
           </div>
         ) : (
           <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-4">
-            <strong className="text-base text-[#122b45]">{course.price}</strong>
+            <div className="flex flex-col">
+              <strong className="text-base text-[#122b45]">{course.price}</strong>
+              {Number(course.originalPrice) > Number(course.currentPrice) && <span className="text-xs font-medium text-slate-400 line-through">{`₹${Number(course.originalPrice).toLocaleString('en-IN')}`}</span>}
+            </div>
             <div className="flex flex-wrap gap-2">
-              {course.cartId?.startsWith('catalog-') ? <>
-                <Link className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 no-underline" to={`/learn/${course.cartId}`}>Curriculum</Link>
+              {course.cartId?.startsWith('catalog-') || course.cartId?.startsWith('mock-interview-') ? <>
+                {course.productType !== 'mock-interview' && <Link className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 no-underline" to={`/learn/${course.cartId}`}>Curriculum</Link>}
               <button
                 type="button"
                 className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#7A1F2B] px-3 text-xs font-bold text-[#7A1F2B] transition hover:bg-[#7A1F2B] hover:text-white"
@@ -58,7 +84,7 @@ function CourseCard({ course, enrolled = false, isInCart = false, onAddToCart, o
 function CourseCardSkeleton() {
   return (
     <article className="overflow-hidden rounded-xl border border-[#e1e4eb] bg-white" aria-hidden="true">
-      <div className="h-[120px] animate-pulse bg-[#eef0f4]" />
+      <div className="h-[150px] animate-pulse bg-[#eef0f4]" />
       <div className="p-3.5">
         <div className="flex items-center justify-between">
           <div className="h-5 w-20 animate-pulse rounded bg-[#eef0f4]" />
@@ -85,20 +111,47 @@ function CoursesPage() {
   const [query, setQuery] = useState('');
   const [level, setLevel] = useState('All levels');
   const [catalogCourses, setCatalogCourses] = useState([]);
+  const [mockInterviews, setMockInterviews] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
+  const [mockInterviewError, setMockInterviewError] = useState('');
   const [cartCourseIds, setCartCourseIds] = useState([]);
   const [cartError, setCartError] = useState('');
   const [wishlistCourseIds, setWishlistCourseIds] = useState([]);
   const visibleCatalog = useMemo(() => catalogCourses.map((course) => ({
     ...course,
     cartId: `catalog-${course.id}`,
+    productType: 'course',
     type: course.category,
     description: `${course.title} - expert-led training for practical, industry-ready skills.`,
     price: `₹${Number(course.price).toLocaleString('en-IN')}`,
+    currentPrice: Number(course.price),
+    originalPrice: Number(course.oldPrice),
     hours: `${course.lessons} lessons`,
     enrolled: false,
   })), [catalogCourses]);
+  const catalogMockInterviews = useMemo(() => mockInterviews.map((interview) => ({
+    ...interview,
+    cartId: `mock-interview-${interview.id}`,
+    productType: 'mock-interview',
+    title: interview.type,
+    interviewType: interview.type,
+    level: '',
+    type: 'Mock Interview',
+    instructor: interview.interviewer,
+    duration: '',
+    hours: '',
+    price: `₹${Number(interview.price).toLocaleString('en-IN')}`,
+    currentPrice: Number(interview.price),
+    originalPrice: Number(interview.oldPrice),
+    imagePositionX: Number(interview.imagePositionX ?? 50),
+    imagePositionY: Number(interview.imagePositionY ?? 50),
+    imageZoom: Number(interview.imageZoom ?? 1),
+    practiceFor: interview.practiceFor || '',
+    description: interview.practiceFor ? `Interview practice for ${interview.practiceFor}.` : '',
+    rating: '',
+    badge: '',
+  })), [mockInterviews]);
   const allCourses = visibleCatalog;
   const enrolledCourses = allCourses.filter((course) => course.enrolled);
   const availableLevels = ['All levels', ...new Set(allCourses.map((course) => course.level))];
@@ -121,6 +174,24 @@ function CoursesPage() {
         if (!active) return;
         setCatalogError(error.message);
         setCatalogLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/mock-interviews')
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Mock interviews could not be loaded.');
+        if (!Array.isArray(data)) throw new Error('The mock interview response was invalid.');
+        return data;
+      })
+      .then((data) => {
+        if (active) setMockInterviews(data);
+      })
+      .catch((error) => {
+        if (active) setMockInterviewError(error.message);
       });
     return () => { active = false; };
   }, []);
@@ -177,6 +248,13 @@ function CoursesPage() {
       return matchesQuery && (level === 'All levels' || course.level === level);
     });
   }, [allCourses, level, query]);
+  const filteredMockInterviews = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return catalogMockInterviews.filter((interview) => (
+      !normalizedQuery
+      || `${interview.interviewType} ${interview.interviewer}`.toLowerCase().includes(normalizedQuery)
+    ));
+  }, [catalogMockInterviews, query]);
 
   const courseSections = [{ title: 'All courses', items: visibleCourses }];
 
@@ -184,7 +262,7 @@ function CoursesPage() {
     <div className="min-h-screen bg-white font-['DM_Sans',_sans-serif] text-[#12243a]">
       <Navbar />
       <main className="customer-page-container pb-10">
-        {(cartError || catalogError) && <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{cartError || catalogError}</p>}
+        {(cartError || catalogError || mockInterviewError) && <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{cartError || catalogError || mockInterviewError}</p>}
         <section className="border-b border-[#edf0f4] py-7 sm:py-9">
           <div className="mt-2.5 flex flex-wrap items-start justify-between gap-4">
             <div><h1 className="customer-page-title text-[#112e49]">Empower Your Future with Industry-Ready Skills.</h1><p className="customer-page-lead mb-0 max-w-2xl text-[#687789]">Explore expert-led courses designed to build real-world skills, enhance your knowledge, and accelerate your career growth.</p></div>
@@ -243,6 +321,26 @@ function CoursesPage() {
             ))}
           </div>
         </section>
+
+        {filteredMockInterviews.length > 0 && (
+          <section className="mt-10 border-t border-[#edf0f4] pt-8" aria-labelledby="mock-interviews-title">
+            <div className="mb-5 flex items-center gap-3">
+              <h2 id="mock-interviews-title" className="m-0 font-[Manrope] text-2xl font-bold leading-tight tracking-[-.025em] text-[#182b49]">Mock interview practice</h2>
+            </div>
+            <div className="grid max-w-[960px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredMockInterviews.map((interview) => (
+                <CourseCard
+                  key={interview.cartId}
+                  course={interview}
+                  isInCart={cartCourseIds.includes(interview.cartId)}
+                  onAddToCart={() => addCourseToCart(interview)}
+                  onGoToCart={() => navigate('/cart')}
+                  onBuyNow={() => buyCourseNow(interview)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
       <Footer />
     </div>

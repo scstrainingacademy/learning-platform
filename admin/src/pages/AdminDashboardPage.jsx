@@ -4,6 +4,8 @@ import {
   GraduationCap, LayoutDashboard, Menu, Pencil, Plus, RefreshCw, Search, Trash2, X,
   Activity, BadgePercent, BookOpenCheck, ClipboardList, Download, Inbox, LibraryBig, Megaphone, MessageSquare, Shield, Ticket, Users, UsersRound, Wallet,
 } from 'lucide-react';
+import ReactCrop from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { apiRequest, downloadAdminFile } from '../services/api.js';
 import { getAdminToken } from '../auth/adminSession.js';
 
@@ -12,10 +14,14 @@ import { getAdminToken } from '../auth/adminSession.js';
 /* ------------------------------------------------------------------ */
 
 const emptyCourse = {
-  title: '', category: 'Design', level: 'Beginner', instructor: '',
-  duration: '', hours: '20 hours', lessons: 12, price: 999, oldPrice: 1499,
-  image: 'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=900&q=85',
-  color: 'lavender', status: 'published',
+  title: '', category: 'Design', level: '', instructor: '',
+  duration: '', hours: '', lessons: '', price: '', oldPrice: '',
+  image: '', color: 'lavender', status: '',
+};
+
+const emptyMockInterview = {
+  type: 'Personal Interview', practiceFor: '', oldPrice: 0, price: 0, interviewer: '', image: '',
+  imagePositionX: 50, imagePositionY: 50, imageZoom: 1, status: 'published',
 };
 
 const panels = [
@@ -43,6 +49,123 @@ const roleLabels = {
 };
 
 const ADMIN_VIEW_KEY = 'skillpath-admin-view';
+
+function ImageCropDialog({ file, error, uploading, onCancel, onApply }) {
+  const imageRef = useRef(null);
+  const cropStageRef = useRef(null);
+  const [imageSource, setImageSource] = useState('');
+  const [imageDisplaySize, setImageDisplaySize] = useState({ width: 0, height: 0 });
+  const [crop, setCrop] = useState({ unit: '%', x: 8, y: 8, width: 84, height: 84 });
+  const [completedCrop, setCompletedCrop] = useState(null);
+  const [cropError, setCropError] = useState('');
+
+  useEffect(() => {
+    const source = URL.createObjectURL(file);
+    setImageSource(source);
+    return () => URL.revokeObjectURL(source);
+  }, [file]);
+
+  const fitImageToStage = (event) => {
+    const stage = cropStageRef.current;
+    const image = event.currentTarget;
+    if (!stage || !image.naturalWidth || !image.naturalHeight) return;
+    const availableWidth = Math.max(1, stage.clientWidth - 32);
+    const availableHeight = Math.max(1, stage.clientHeight - 32);
+    const scale = Math.min(availableWidth / image.naturalWidth, availableHeight / image.naturalHeight);
+    setImageDisplaySize({
+      width: image.naturalWidth * scale,
+      height: image.naturalHeight * scale,
+    });
+  };
+
+  const applyCrop = async () => {
+    const image = imageRef.current;
+    if (!image || !crop.width || !crop.height) return;
+    setCropError('');
+    try {
+      const bounds = image.getBoundingClientRect();
+      const scaleX = image.naturalWidth / bounds.width;
+      const scaleY = image.naturalHeight / bounds.height;
+      const cropPixels = completedCrop?.width && completedCrop?.height
+        ? completedCrop
+        : crop.unit === '%'
+          ? {
+              x: crop.x * bounds.width / 100,
+              y: crop.y * bounds.height / 100,
+              width: crop.width * bounds.width / 100,
+              height: crop.height * bounds.height / 100,
+            }
+          : crop;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(cropPixels.width * scaleX);
+      canvas.height = Math.round(cropPixels.height * scaleY);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Image crop could not be created.');
+      context.drawImage(
+        image,
+        Math.round(cropPixels.x * scaleX),
+        Math.round(cropPixels.y * scaleY),
+        canvas.width,
+        canvas.height,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      const outputType = file.type === 'image/png' ? 'image/png' : file.type === 'image/webp' ? 'image/webp' : 'image/jpeg';
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, outputType, 0.92));
+      if (!blob) throw new Error('Cropped image could not be created.');
+      if (blob.size > 5 * 1024 * 1024) throw new Error('Cropped image must be smaller than 5 MB.');
+      const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type.split('/')[1] || 'png';
+      await onApply(new File([blob], `cover-crop.${extension}`, { type: blob.type }));
+    } catch (cropFailure) {
+      setCropError(cropFailure.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="image-crop-title">
+      <section className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="m-0 text-base font-bold text-slate-900" id="image-crop-title">Crop and adjust cover</h2>
+            <p className="m-0 mt-1 text-xs text-slate-500">Drag or resize the selection freely. The preview will use this crop.</p>
+          </div>
+          <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" disabled={uploading} onClick={onCancel} type="button" aria-label="Cancel image crop"><X size={18} /></button>
+        </header>
+        <div ref={cropStageRef} className="flex h-[55vh] min-h-[220px] w-full items-center justify-center overflow-auto bg-slate-50 p-4">
+          {imageSource && (
+            <ReactCrop
+              className="max-w-full"
+              crop={crop}
+              minWidth={32}
+              minHeight={32}
+              onChange={(_, percentCrop) => { setCrop(percentCrop); setCropError(''); }}
+              onComplete={(pixelCrop) => setCompletedCrop(pixelCrop)}
+            >
+              <img
+                ref={imageRef}
+                alt="Select the area to use as the cover image"
+                className="block max-w-full"
+                height={imageDisplaySize.height || undefined}
+                onError={() => setCropError('This image could not be opened. Please choose another file.')}
+                onLoad={fitImageToStage}
+                src={imageSource}
+                style={imageDisplaySize.width ? { width: imageDisplaySize.width, height: imageDisplaySize.height } : undefined}
+                width={imageDisplaySize.width || undefined}
+              />
+            </ReactCrop>
+          )}
+        </div>
+        {(cropError || error) && <p className="m-0 px-5 pt-3 text-sm text-red-700" role="alert">{cropError || error}</p>}
+        <footer className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button className={softButtonClass} disabled={uploading} onClick={onCancel} type="button">Cancel</button>
+          <button className={buttonClass} disabled={uploading || !crop.width} onClick={applyCrop} type="button">{uploading ? 'Uploading…' : 'Crop and upload'}</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
 
 function getInitialAdminView() {
   const savedView = sessionStorage.getItem(ADMIN_VIEW_KEY);
@@ -547,6 +670,7 @@ function LearnerPhoto({ learner, onError, className = '' }) {
 
 function AdminDashboardPage({ onLogout }) {
   const [courses, setCourses] = useState([]);
+  const [mockInterviews, setMockInterviews] = useState([]);
   const [homepageCourseIds, setHomepageCourseIds] = useState([]);
   const [homepageCourseSelection, setHomepageCourseSelection] = useState([]);
   const [homepageCourseQuery, setHomepageCourseQuery] = useState('');
@@ -574,6 +698,12 @@ function AdminDashboardPage({ onLogout }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(() => window.scrollY > 32);
   const [courseDrawerOpen, setCourseDrawerOpen] = useState(false);
+  const [mockInterviewDrawerOpen, setMockInterviewDrawerOpen] = useState(false);
+  const [mockInterviewForm, setMockInterviewForm] = useState(emptyMockInterview);
+  const [imageCropRequest, setImageCropRequest] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [editingMockInterviewId, setEditingMockInterviewId] = useState(null);
+  const [courseSectionTab, setCourseSectionTab] = useState('courses');
   const [editingSections, setEditingSections] = useState([]);
   const [editingSectionId, setEditingSectionId] = useState('');
   const [editingSectionsOpen, setEditingSectionsOpen] = useState(false);
@@ -597,14 +727,16 @@ function AdminDashboardPage({ onLogout }) {
       const canManageCatalog = ['owner', 'course_manager'].includes(admin.role);
       const canManageLearners = ['owner', 'course_manager', 'support'].includes(admin.role);
       const canViewEnrollments = ['owner', 'course_manager', 'support', 'finance'].includes(admin.role);
-      const [courseData, overviewData, learnerData, enrollmentData, homepageCourses] = await Promise.all([
+      const [courseData, mockInterviewData, overviewData, learnerData, enrollmentData, homepageCourses] = await Promise.all([
         canManageCatalog ? apiRequest('/api/courses/admin') : Promise.resolve([]),
+        canManageCatalog ? apiRequest('/api/mock-interviews/admin') : Promise.resolve([]),
         apiRequest('/api/admin/overview'),
         canManageLearners ? apiRequest('/api/admin/learners') : Promise.resolve({ learners: [] }),
         canViewEnrollments ? apiRequest('/api/admin/enrollments') : Promise.resolve({ enrollments: [] }),
         canManageCatalog ? apiRequest('/api/courses/admin/homepage-featured') : Promise.resolve({ courseIds: [] }),
       ]);
       setCourses(courseData);
+      setMockInterviews(mockInterviewData);
       setHomepageCourseIds(homepageCourses.courseIds);
       setHomepageCourseSelection(homepageCourses.courseIds);
       setOverview(overviewData);
@@ -673,25 +805,114 @@ function AdminDashboardPage({ onLogout }) {
     setCourseForm((current) => ({ ...current, [name]: value }));
   };
 
-  const handleCoverImageUpload = async (event) => {
+  const startImageCrop = (event, target) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setError('Course cover must be a JPEG, PNG, or WebP image smaller than 5 MB.');
-      event.target.value = '';
+      setError('Cover image must be a JPEG, PNG, or WebP image smaller than 5 MB.');
       return;
     }
 
     setError('');
-    const formData = new FormData();
-    formData.append('image', file);
+    setImageCropRequest({ file, target });
+  };
+
+  const uploadCroppedImage = async (file) => {
+    if (!imageCropRequest) return;
+    setImageUploading(true);
+    setError('');
     try {
+      const formData = new FormData();
+      formData.append('image', file);
       const { url } = await apiRequest('/api/courses/image', { method: 'POST', body: formData });
-      setCourseForm((current) => ({ ...current, image: url }));
+      if (imageCropRequest.target === 'course') {
+        setCourseForm((current) => ({ ...current, image: url }));
+      } else {
+        setMockInterviewForm((current) => ({
+          ...current,
+          image: url,
+          imagePositionX: 50,
+          imagePositionY: 50,
+          imageZoom: 1,
+        }));
+      }
+      setImageCropRequest(null);
     } catch (uploadError) {
       setError(uploadError.message);
+    } finally {
+      setImageUploading(false);
     }
-    event.target.value = '';
+  };
+
+  const handleCoverImageUpload = (event) => startImageCrop(event, 'course');
+  const handleMockInterviewImageUpload = (event) => startImageCrop(event, 'mock-interview');
+
+  const openNewMockInterview = () => {
+    setEditingMockInterviewId(null);
+    setMockInterviewForm(emptyMockInterview);
+    setError('');
+    setMockInterviewDrawerOpen(true);
+  };
+
+  const closeMockInterviewDrawer = () => {
+    setMockInterviewDrawerOpen(false);
+    setEditingMockInterviewId(null);
+    setMockInterviewForm(emptyMockInterview);
+  };
+
+  const submitMockInterview = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      const savedInterview = await apiRequest(
+        editingMockInterviewId
+          ? `/api/mock-interviews/${editingMockInterviewId}`
+          : '/api/mock-interviews',
+        {
+          method: editingMockInterviewId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mockInterviewForm),
+        },
+      );
+      setMockInterviews((current) => editingMockInterviewId
+        ? current.map((item) => item.id === editingMockInterviewId ? savedInterview : item)
+        : [...current, savedInterview]);
+      setNotice(editingMockInterviewId ? 'Mock interview updated.' : 'Mock interview created.');
+      closeMockInterviewDrawer();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
+
+  const startEditingMockInterview = (interview) => {
+    setEditingMockInterviewId(interview.id);
+    setMockInterviewForm({
+      type: interview.type,
+      practiceFor: interview.practiceFor || '',
+      oldPrice: interview.oldPrice ?? interview.price,
+      price: interview.price,
+      interviewer: interview.interviewer,
+      image: interview.image,
+      imagePositionX: Number(interview.imagePositionX ?? 50),
+      imagePositionY: Number(interview.imagePositionY ?? 50),
+      imageZoom: Number(interview.imageZoom ?? 1),
+      status: interview.status,
+    });
+    setError('');
+    setMockInterviewDrawerOpen(true);
+  };
+
+  const removeMockInterview = async (interview) => {
+    if (!window.confirm(`Delete this ${interview.type.toLowerCase()} mock interview?`)) return;
+    setError('');
+    try {
+      await apiRequest(`/api/mock-interviews/${interview.id}`, { method: 'DELETE' });
+      setMockInterviews((current) => current.filter((item) => item.id !== interview.id));
+      setNotice('Mock interview deleted.');
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   };
 
   const submitCourse = async (event) => {
@@ -945,6 +1166,15 @@ function AdminDashboardPage({ onLogout }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [courseDrawerOpen]);
+
+  useEffect(() => {
+    if (!mockInterviewDrawerOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') closeMockInterviewDrawer();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mockInterviewDrawerOpen]);
 
   useEffect(() => {
     if (!courseDrawerOpen || !editingId) {
@@ -1232,14 +1462,32 @@ function AdminDashboardPage({ onLogout }) {
             <>
               <PageHeader
                 actions={
-                  <>
-                    <button className={softButtonClass} onClick={openHomepageCourseSelector} type="button"><Plus size={16} /> Add course to home page</button>
-                    <button className={buttonClass} onClick={openNewCourse} type="button"><Plus size={16} /> Add course</button>
-                  </>
+                  courseSectionTab === 'courses'
+                    ? <>
+                        <button className={softButtonClass} onClick={openHomepageCourseSelector} type="button"><Plus size={16} /> Add course to home page</button>
+                        <button className={buttonClass} onClick={openNewCourse} type="button"><Plus size={16} /> Add course</button>
+                      </>
+                    : <button className={buttonClass} onClick={openNewMockInterview} type="button"><Plus size={16} /> Add mock interview</button>
                 }
                 title="Course Management"
               />
-              <div>
+              <nav aria-label="Course management sections" className="flex gap-6 border-b border-slate-200">
+                {[
+                  ['courses', 'Courses'],
+                  ['mock-interviews', 'Mock interviews'],
+                ].map(([tab, label]) => (
+                  <button
+                    aria-current={courseSectionTab === tab ? 'page' : undefined}
+                    className={`-mb-px border-0 border-b-2 bg-transparent px-1 py-3 text-sm font-semibold transition-colors ${courseSectionTab === tab ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                    key={tab}
+                    onClick={() => setCourseSectionTab(tab)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+              {courseSectionTab === 'courses' && <div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300 px-4 py-3">
                   <div>
                     <h2 className="m-0 font-[Manrope,sans-serif] text-base font-bold text-slate-900">All courses</h2>
@@ -1327,7 +1575,55 @@ function AdminDashboardPage({ onLogout }) {
                     </button>
                   </nav>
                 )}
-              </div>
+              </div>}
+              {courseSectionTab === 'mock-interviews' && (
+                <section aria-label="Mock interviews">
+                  <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-slate-300 px-1 py-3">
+                    <div>
+                      <h2 className="m-0 font-[Manrope,sans-serif] text-base font-bold text-slate-900">Mock interviews</h2>
+                      <p className="m-0 mt-0.5 text-xs text-slate-500">{mockInterviews.length} interviews</p>
+                    </div>
+                  </div>
+                  {mockInterviews.length ? (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {mockInterviews.map((interview) => (
+                        <article className="flex min-w-0 flex-col overflow-hidden rounded-sm border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]" key={interview.id}>
+                          <img alt="" className="h-32 w-full bg-slate-100 object-cover" loading="lazy" src={interview.image} />
+                          <div className="flex flex-1 flex-col p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <h3 className="m-0 font-[Manrope,sans-serif] text-sm font-bold text-slate-900">{interview.type}</h3>
+                              <Badge tone={statusTone(interview.status)}>{interview.status}</Badge>
+                            </div>
+                            <dl className="m-0 grid gap-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <dt className="text-xs font-medium text-slate-500">Practice for</dt>
+                                <dd className="m-0 truncate text-right text-xs font-semibold text-slate-800" title={interview.practiceFor || ''}>{interview.practiceFor || 'Not specified'}</dd>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <dt className="text-xs font-medium text-slate-500">Interviewer</dt>
+                                <dd className="m-0 truncate text-right text-xs font-semibold text-slate-800" title={interview.interviewer}>{interview.interviewer}</dd>
+                              </div>
+                              <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                <dt className="text-xs font-medium text-slate-500">Price</dt>
+                                <dd className="m-0 flex items-center gap-2 text-right text-xs">
+                                  {Number(interview.oldPrice) > Number(interview.price) && <span className="text-slate-400 line-through">₹{Number(interview.oldPrice).toLocaleString('en-IN')}</span>}
+                                  <strong className="font-bold text-slate-900">₹{Number(interview.price).toLocaleString('en-IN')}</strong>
+                                </dd>
+                              </div>
+                            </dl>
+                            <div className="mt-auto flex justify-end gap-1.5 border-t border-slate-100 pt-2">
+                              <button aria-label={`Edit ${interview.type}`} className={iconButtonClass} onClick={() => startEditingMockInterview(interview)} title="Edit mock interview" type="button"><Pencil size={15} /></button>
+                              <button aria-label={`Delete ${interview.type}`} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-rose-500 transition hover:border-rose-200 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-400/20" onClick={() => removeMockInterview(interview)} title="Delete mock interview" type="button"><Trash2 size={15} /></button>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState description="Add Personal Interview or Tool Test mock interview offers for learners." icon={Users} title="No mock interviews yet" />
+                  )}
+                </section>
+              )}
             </>
           )}
 
@@ -1758,10 +2054,10 @@ function AdminDashboardPage({ onLogout }) {
             <div className="flex-1 space-y-7 overflow-y-auto px-6 py-6">
               <section>
                 <h3 className="m-0 mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Basic details</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
                   <label className={`${labelClass} sm:col-span-2`}>Course title<input className={inputClass} name="title" onChange={updateCourseField} placeholder="e.g. Product Design Fundamentals" required value={courseForm.title} /></label>
-                  <label className={labelClass}>Level<select className={inputClass} name="level" onChange={updateCourseField} value={courseForm.level}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label>
-                  <label className={`${labelClass} sm:col-span-2`}>Publishing<select className={inputClass} name="status" onChange={updateCourseField} value={courseForm.status}><option value="published">Published</option><option value="draft">Draft</option></select></label>
+                  <label className={labelClass}>Level<select className={inputClass} name="level" onChange={updateCourseField} required value={courseForm.level}><option disabled value="">Select a level</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label>
+                  <label className={`${labelClass} sm:col-span-2`}>Publishing<select className={inputClass} name="status" onChange={updateCourseField} required value={courseForm.status}><option disabled value="">Select publishing status</option><option value="published">Published</option><option value="draft">Draft</option></select></label>
                 </div>
               </section>
 
@@ -1827,7 +2123,7 @@ function AdminDashboardPage({ onLogout }) {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className={`${labelClass} sm:col-span-2`}>Instructor<input className={inputClass} name="instructor" onChange={updateCourseField} placeholder="Instructor name" required value={courseForm.instructor} /></label>
                   <label className={labelClass}>Duration<input className={inputClass} name="duration" onChange={updateCourseField} placeholder="e.g. 8 weeks" required value={courseForm.duration} /></label>
-                  <label className={labelClass}>Hours<input className={inputClass} name="hours" onChange={updateCourseField} placeholder="e.g. 20 hours" value={courseForm.hours} /></label>
+                  <label className={labelClass}>Hours<input className={inputClass} name="hours" onChange={updateCourseField} placeholder="e.g. 20 hours" required value={courseForm.hours} /></label>
                   <label className={labelClass}>Lessons<input className={inputClass} min="1" name="lessons" onChange={updateCourseField} required type="number" value={courseForm.lessons} /></label>
                 </div>
               </section>
@@ -1848,7 +2144,7 @@ function AdminDashboardPage({ onLogout }) {
                     <div className="flex gap-2">
                       <input className={`${inputClass} flex-1`} name="image" onChange={updateCourseField} placeholder="Paste image URL" required type="url" value={courseForm.image} />
                       <label className={`${softButtonClass} shrink-0 cursor-pointer !px-3`}>
-                        Upload
+                        Upload &amp; crop
                         <input accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleCoverImageUpload} type="file" />
                       </label>
                     </div>
@@ -1864,6 +2160,144 @@ function AdminDashboardPage({ onLogout }) {
             </footer>
           </form>
         </div>
+      )}
+
+      {mockInterviewDrawerOpen && (
+        <div aria-labelledby="mock-interview-drawer-title" aria-modal="true" className="fixed inset-0 z-50 flex justify-end" role="dialog">
+          <button aria-label="Close mock interview form" className="absolute inset-0 cursor-default bg-slate-900/40" onClick={closeMockInterviewDrawer} type="button" />
+          <form className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" onSubmit={submitMockInterview}>
+            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="m-0 font-[Manrope,sans-serif] text-lg font-bold text-slate-900" id="mock-interview-drawer-title">
+                  {editingMockInterviewId ? 'Edit mock interview' : 'Add mock interview'}
+                </h2>
+                <p className="m-0 mt-1 text-xs text-slate-500">Set up a mock interview offer for learners.</p>
+              </div>
+              <button aria-label="Close mock interview form" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={closeMockInterviewDrawer} type="button"><X size={18} /></button>
+            </header>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
+              <label className={labelClass}>
+                <span>Type</span>
+                <select
+                  className={inputClass}
+                  onChange={(event) => setMockInterviewForm((current) => ({ ...current, type: event.target.value }))}
+                  value={mockInterviewForm.type}
+                >
+                  <option>Personal Interview</option>
+                  <option>Tool Test</option>
+                </select>
+              </label>
+              <label className={labelClass}>
+                <span>Interview practice for</span>
+                <input
+                  className={inputClass}
+                  onChange={(event) => setMockInterviewForm((current) => ({ ...current, practiceFor: event.target.value }))}
+                  placeholder="e.g. Frontend Developer, Product Designer"
+                  required
+                  value={mockInterviewForm.practiceFor}
+                />
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className={labelClass}>
+                  <span>Original price (INR)</span>
+                  <input
+                    className={inputClass}
+                    min="0"
+                    onChange={(event) => setMockInterviewForm((current) => ({ ...current, oldPrice: event.target.value }))}
+                    required
+                    type="number"
+                    value={mockInterviewForm.oldPrice}
+                  />
+                </label>
+                <label className={labelClass}>
+                  <span>Price (INR)</span>
+                  <input
+                    className={inputClass}
+                    min="0"
+                    onChange={(event) => setMockInterviewForm((current) => ({ ...current, price: event.target.value }))}
+                    required
+                    type="number"
+                    value={mockInterviewForm.price}
+                  />
+                </label>
+              </div>
+              <label className={labelClass}>
+                <span>Interviewer</span>
+                <input
+                  className={inputClass}
+                  onChange={(event) => setMockInterviewForm((current) => ({ ...current, interviewer: event.target.value }))}
+                  placeholder="Interviewer name"
+                  required
+                  value={mockInterviewForm.interviewer}
+                />
+              </label>
+              <label className={labelClass}>
+                <span>Publishing</span>
+                <select
+                  className={inputClass}
+                  onChange={(event) => setMockInterviewForm((current) => ({ ...current, status: event.target.value }))}
+                  value={mockInterviewForm.status}
+                >
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </label>
+              <div className={labelClass}>
+                <span>Cover image</span>
+                <div className="flex gap-2">
+                  <input
+                    className={`${inputClass} flex-1`}
+                    onChange={(event) => setMockInterviewForm((current) => ({ ...current, image: event.target.value }))}
+                    placeholder="Paste image URL"
+                    required
+                    type="url"
+                    value={mockInterviewForm.image}
+                  />
+                  <label className={`${softButtonClass} shrink-0 cursor-pointer !px-3`}>
+                  Upload &amp; crop
+                    <input accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleMockInterviewImageUpload} type="file" />
+                  </label>
+                </div>
+                {mockInterviewForm.image && (
+                  <>
+                    <div className="mt-3 aspect-video w-full max-w-[320px] overflow-hidden border border-slate-200 bg-slate-100">
+                      <img
+                        alt="Mock interview cover preview"
+                        className="h-full w-full object-cover"
+                        key={mockInterviewForm.image}
+                        onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                        src={mockInterviewForm.image}
+                        style={{
+                          objectPosition: `${mockInterviewForm.imagePositionX}% ${mockInterviewForm.imagePositionY}%`,
+                          transform: `scale(${mockInterviewForm.imageZoom})`,
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <footer className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
+              <button className={softButtonClass} onClick={closeMockInterviewDrawer} type="button">Cancel</button>
+              <button className={buttonClass} type="submit">
+                {editingMockInterviewId ? <Pencil size={15} /> : <Plus size={16} />}
+                {editingMockInterviewId ? 'Save changes' : 'Create mock interview'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
+
+      {imageCropRequest && (
+        <ImageCropDialog
+          file={imageCropRequest.file}
+          error={error}
+          uploading={imageUploading}
+          onCancel={() => { setImageCropRequest(null); setError(''); }}
+          onApply={uploadCroppedImage}
+        />
       )}
 
       {selectedLearnerProfile && (
@@ -2699,7 +3133,7 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
                 {orders.map((order) => (
                   <tr key={order.id}>
                     <Cell><strong className="text-slate-900">{order.razorpayOrderId || order.id}</strong><div className="text-xs text-slate-400">{order.userName} · {order.userEmail}</div></Cell>
-                    <Cell>{order.courseTitles?.join(', ') || '—'}</Cell>
+                    <Cell>{(order.itemTitles || order.courseTitles || []).join(', ') || '—'}</Cell>
                     <Cell>₹{Number(order.amount).toLocaleString('en-IN')}</Cell>
                     <Cell><Badge tone={statusTone(order.status)}>{String(order.status).replaceAll('_', ' ')}</Badge>{order.failureReason && <div className="mt-1 text-xs text-rose-500">{order.failureReason}</div>}</Cell>
                     <Cell>{order.razorpayPaymentId || 'No captured payment'}{order.refunds?.map((refund) => <div className="text-xs text-slate-500" key={refund.id}>₹{refund.amount} · {refund.status}</div>)}</Cell>

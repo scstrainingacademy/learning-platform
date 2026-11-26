@@ -27,7 +27,7 @@ export async function getAdminOverview(request, response, next) {
         .sort({ createdAt: -1 }).limit(8).toArray(),
       database.collection('orders').find(
         { status: { $in: ['paid', 'partially_refunded', 'refunded'] } },
-        { projection: { userEmail: 1, courseTitles: 1, amount: 1, status: 1, razorpayOrderId: 1, paidAt: 1, createdAt: 1 } },
+        { projection: { userEmail: 1, courseTitles: 1, itemTitles: 1, amount: 1, status: 1, razorpayOrderId: 1, paidAt: 1, createdAt: 1 } },
       ).sort({ paidAt: -1, createdAt: -1 }).limit(8).toArray(),
     ]);
     const recentActivity = [
@@ -37,7 +37,7 @@ export async function getAdminOverview(request, response, next) {
         action: `payment.${order.status}`,
         resource: 'order',
         resourceId: order.razorpayOrderId,
-        details: { courses: order.courseTitles, amount: order.amount },
+        details: { courses: order.courseTitles || [], items: order.itemTitles || order.courseTitles || [], amount: order.amount },
         createdAt: order.paidAt || order.createdAt,
       })),
     ].sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)).slice(0, 8);
