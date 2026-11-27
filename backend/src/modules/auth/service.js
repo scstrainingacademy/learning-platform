@@ -93,6 +93,11 @@ export async function requestOtp({ identifier: rawIdentifier, purpose, name }) {
   }
 
   const db = await getDatabase();
+  const users = db.collection('users');
+  if (purpose === 'signup' && await users.findOne({ identifier: identifier.value })) {
+    throw makeError('An account already exists. Please log in instead.', 409);
+  }
+
   const challenges = db.collection('otp_challenges');
   const existing = await challenges.findOne({ identifier: identifier.value, purpose });
   const cooldownRemaining = existing
@@ -161,8 +166,13 @@ export async function verifyOtp({ identifier: rawIdentifier, purpose, otp, name 
     throw error;
   }
 
-  await challenges.deleteOne({ _id: challenge._id });
   const users = db.collection('users');
+  if (purpose === 'signup' && await users.findOne({ identifier: identifier.value })) {
+    await challenges.deleteOne({ _id: challenge._id });
+    throw makeError('An account with this email or phone number already exists. Please log in instead.', 409);
+  }
+
+  await challenges.deleteOne({ _id: challenge._id });
   let user = purpose === 'two-factor-login' && challenge.userId
     ? await users.findOne({ _id: challenge.userId })
     : await users.findOne({ identifier: identifier.value });
@@ -175,7 +185,15 @@ export async function verifyOtp({ identifier: rawIdentifier, purpose, otp, name 
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    const result = await users.insertOne(user);
+    let result;
+    try {
+      result = await users.insertOne(user);
+    } catch (error) {
+      if (error.code === 11000) {
+        throw makeError('An account with this email or phone number already exists. Please log in instead.', 409);
+      }
+      throw error;
+    }
     user._id = result.insertedId;
   }
   if (!user) {

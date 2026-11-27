@@ -15,6 +15,61 @@ function GoogleMark() {
   );
 }
 
+function OtpInput({ digits, onChange, style }) {
+  const inputRefs = React.useRef([]);
+
+  const updateDigits = (index, enteredDigits) => {
+    const nextDigits = [...digits];
+    enteredDigits.slice(0, 6 - index).forEach((digit, offset) => {
+      nextDigits[index + offset] = digit;
+    });
+    onChange(nextDigits);
+    inputRefs.current[Math.min(index + enteredDigits.length, 5)]?.focus();
+  };
+
+  return (
+    <div className="auth-otp item" style={style} role="group" aria-label="Enter one-time password">
+      {digits.map((digit, index) => (
+        <input
+          key={index}
+          ref={(element) => { inputRefs.current[index] = element; }}
+          className="auth-otp-input"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={index === 0 ? 6 : 1}
+          autoComplete={index === 0 ? 'one-time-code' : 'off'}
+          aria-label={`OTP digit ${index + 1} of 6`}
+          value={digit}
+          required
+          onChange={(event) => {
+            const enteredDigits = event.target.value.replace(/\D/g, '');
+            if (enteredDigits.length > 1) {
+              updateDigits(index, enteredDigits);
+              return;
+            }
+            const nextDigits = [...digits];
+            nextDigits[index] = enteredDigits;
+            onChange(nextDigits);
+            if (enteredDigits && index < 5) inputRefs.current[index + 1]?.focus();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft' && index > 0) inputRefs.current[index - 1]?.focus();
+            if (event.key === 'ArrowRight' && index < 5) inputRefs.current[index + 1]?.focus();
+            if (event.key === 'Backspace' && !digit && index > 0) inputRefs.current[index - 1]?.focus();
+          }}
+          onPaste={(event) => {
+            const pastedDigits = event.clipboardData.getData('text').replace(/\D/g, '');
+            if (!pastedDigits) return;
+            event.preventDefault();
+            updateDigits(index, pastedDigits);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function AuthModal() {
   const [mode, setMode] = useState('');
   const [notice, setNotice] = useState('');
@@ -23,7 +78,7 @@ function AuthModal() {
   const [otpPurpose, setOtpPurpose] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [name, setName] = useState('');
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState(() => Array(6).fill(''));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,7 +90,7 @@ function AuthModal() {
       setLoginMethod('otp');
       setOtpPurpose(event.detail === 'signup' ? 'signup' : 'login');
       setError('');
-      setOtp('');
+      setOtp(Array(6).fill(''));
       setPassword('');
     };
     window.addEventListener('scs-auth', open);
@@ -54,7 +109,7 @@ function AuthModal() {
     setStep('identifier');
     setLoginMethod('otp');
     setOtpPurpose(nextMode);
-    setOtp('');
+    setOtp(Array(6).fill(''));
     setPassword('');
     setError('');
   };
@@ -104,7 +159,7 @@ function AuthModal() {
     event.preventDefault();
     setBusy(true);
     setError('');
-    postJson('/api/auth/verify-otp', { identifier, name, otp, purpose: otpPurpose || mode })
+    postJson('/api/auth/verify-otp', { identifier, name, otp: otp.join(''), purpose: otpPurpose || mode })
       .then((result) => {
         localStorage.setItem('scs_session_token', result.token);
         localStorage.setItem('scs_user', JSON.stringify(result.user));
@@ -132,24 +187,24 @@ function AuthModal() {
           <div className="auth-flip-shape" aria-hidden="true" />
           <form className="auth-flip-panel is-form is-login-form" aria-hidden={mode !== 'login'} onSubmit={step === 'otp' ? verify : loginMethod === 'password' ? loginWithPassword : submit}>
             <h2 id="auth-title-login" className="auth-flip-title auth-login-title item" style={{ '--i': 0 }}>Log in to continue your learning journey</h2>
-            {step === 'otp' ? <div className="auth-login-field item" style={{ '--i': 1 }}><input className="auth-login-identifier" id="auth-login-otp" value={otp} onChange={(event) => setOtp(event.target.value)} inputMode="numeric" maxLength={6} autoComplete="one-time-code" placeholder=" " aria-label="One-time password" required /><label className="auth-login-label" htmlFor="auth-login-otp">Enter OTP</label></div> : <div className="auth-login-field item" style={{ '--i': 1 }}><input className="auth-login-identifier" id="auth-login-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} name="identifier" type="text" autoComplete="username" placeholder=" " aria-label="Email or Phone Number" required /><label className="auth-login-label" htmlFor="auth-login-identifier">Email or Phone Number</label></div>}
+            {step === 'otp' ? <OtpInput digits={otp} onChange={setOtp} style={{ '--i': 1 }} /> : <div className="auth-login-field item" style={{ '--i': 1 }}><input className="auth-login-identifier" id="auth-login-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} name="identifier" type="text" autoComplete="username" placeholder=" " aria-label="Email or Phone Number" required /><label className="auth-login-label" htmlFor="auth-login-identifier">Email or Phone Number</label></div>}
             {step !== 'otp' && loginMethod === 'password' && <div className="auth-login-field item" style={{ '--i': 2 }}><input className="auth-login-identifier" id="auth-login-password" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder=" " aria-label="Password" required /><label className="auth-login-label" htmlFor="auth-login-password">Password</label></div>}
             <button className="auth-flip-submit auth-login-continue item" style={{ '--i': 2 }} type="submit" disabled={busy}>{busy ? 'Please wait...' : step === 'otp' ? 'Verify OTP' : loginMethod === 'password' ? 'Log in' : 'Send OTP'}</button>
             {step !== 'otp' && <p className="auth-flip-switch item" style={{ '--i': 3 }}>Use <button type="button" onClick={() => setLoginMethod((method) => method === 'otp' ? 'password' : 'otp')}>{loginMethod === 'otp' ? 'password' : 'OTP'} instead</button></p>}
             {error && <p className="auth-error item" role="alert">{error}</p>}
             <p className="auth-login-divider item" style={{ '--i': 3 }}>Other log in options</p>
-            <button className="auth-login-google item" style={{ '--i': 4 }} type="button" onClick={() => setNotice('Google sign-in will be available when authentication is connected.')}><GoogleMark /><span>Sign in with Google</span></button>
+            <button className="auth-login-google item" style={{ '--i': 4 }} type="button" onClick={() => setError('Google sign-in will be available when authentication is connected.')}><GoogleMark /><span>Sign in with Google</span></button>
             <p className="auth-flip-switch item" style={{ '--i': 5 }}>Don’t have an account? <button type="button" onClick={() => switchMode('signup')}>Sign Up</button></p>
           </form>
           <div className="auth-flip-panel is-info is-login-info" aria-hidden={mode !== 'login'}><img className="auth-flip-illustration item" src="/videos/Login.svg" alt="" /><h2 className="auth-flip-hello item" style={{ '--i': 1 }}>Welcome back</h2><p className="auth-flip-copy item" style={{ '--i': 2 }}>Continue your learning journey with expert-led BIM and computational design training.</p></div>
           <form className="auth-flip-panel is-form is-register-form" aria-hidden={mode !== 'signup'} onSubmit={step === 'otp' ? verify : submit}>
             <h2 id="auth-title-signup" className="auth-flip-title auth-register-title item" style={{ '--i': 0 }}>Sign up with email</h2>
             {step !== 'otp' && <div className="auth-register-field item" style={{ '--i': 1 }}><input className="auth-register-input" id="auth-name" name="name" value={name} onChange={(event) => setName(event.target.value)} type="text" autoComplete="name" placeholder=" " aria-label="Full name" required /><label className="auth-register-label" htmlFor="auth-name">Full name</label></div>}
-            <div className="auth-register-field item" style={{ '--i': 2 }}><input className="auth-register-input" id="auth-identifier" name="identifier" value={step === 'otp' ? otp : identifier} onChange={(event) => step === 'otp' ? setOtp(event.target.value) : setIdentifier(event.target.value)} type={step === 'otp' ? 'text' : 'text'} inputMode={step === 'otp' ? 'numeric' : 'email'} maxLength={step === 'otp' ? 6 : undefined} autoComplete={step === 'otp' ? 'one-time-code' : 'email'} placeholder=" " aria-label={step === 'otp' ? 'One-time password' : 'Email or Phone Number'} required /><label className="auth-register-label" htmlFor="auth-identifier">{step === 'otp' ? 'Enter OTP' : 'Email or Phone Number'}</label></div>
+            {step === 'otp' ? <OtpInput digits={otp} onChange={setOtp} style={{ '--i': 2 }} /> : <div className="auth-register-field item" style={{ '--i': 2 }}><input className="auth-register-input" id="auth-identifier" name="identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} type="text" autoComplete="email" placeholder=" " aria-label="Email or Phone Number" required /><label className="auth-register-label" htmlFor="auth-identifier">Email or Phone Number</label></div>}
             <button className="auth-flip-submit auth-register-continue item" style={{ '--i': 3 }} type="submit" disabled={busy}>{busy ? 'Please wait...' : step === 'otp' ? 'Verify OTP' : 'Send OTP'}</button>
             {error && <p className="auth-error item" role="alert">{error}</p>}
             <p className="auth-login-divider item" style={{ '--i': 4 }}>Other sign up options</p>
-            <button className="auth-login-google item" style={{ '--i': 5 }} type="button" onClick={() => setNotice('Google sign-in will be available when authentication is connected.')}><GoogleMark /><span>Sign up with Google</span></button>
+            <button className="auth-login-google item" style={{ '--i': 5 }} type="button" onClick={() => setError('Google sign-in will be available when authentication is connected.')}><GoogleMark /><span>Sign up with Google</span></button>
             <p className="auth-flip-switch item" style={{ '--i': 6 }}>Already have an account? <button type="button" onClick={() => switchMode('login')}>Login</button></p>
             <p className="auth-register-legal item" style={{ '--i': 7 }}>By signing up, you agree to our <a href="/terms-and-conditions">Terms of Use</a> and <a href="/privacy-policy">Privacy Policy</a>.</p>
           </form>

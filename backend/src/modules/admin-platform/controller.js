@@ -351,28 +351,29 @@ export async function createCoupon(request, response, next) {
     const code = String(request.body?.code || '').trim().toUpperCase();
     const discountType = request.body?.discountType;
     const value = Number(request.body?.value);
-    const maxUses = Number(request.body?.maxUses ?? 0);
+    const startsAt = parseDate(request.body?.startsAt, 'startsAt');
+    const endsAt = parseDate(request.body?.endsAt, 'endsAt');
     const courseIds = Array.isArray(request.body?.courseIds) ? [...new Set(request.body.courseIds.map(Number))] : [];
     if (!/^[A-Z0-9_-]{3,32}$/.test(code)) return sendError(response, 400, 'Coupon code must be 3-32 letters, numbers, hyphens, or underscores.');
     if (!['percent', 'fixed'].includes(discountType) || !Number.isFinite(value) || value <= 0) return sendError(response, 400, 'Enter a valid discount type and value.');
     if (discountType === 'percent' && value > 100) return sendError(response, 400, 'Percentage discounts cannot exceed 100.');
-    if (!Number.isSafeInteger(maxUses) || maxUses < 0) return sendError(response, 400, 'Maximum uses must be a non-negative integer.');
+    if (!startsAt || !endsAt) return sendError(response, 400, 'Coupon start and end dates are required.');
+    if (startsAt >= endsAt) return sendError(response, 400, 'endsAt must be later than startsAt.');
     if (courseIds.length > 100 || courseIds.some((id) => !Number.isSafeInteger(id) || id < 1)) return sendError(response, 400, 'Course restrictions must contain valid course IDs.');
     const database = await initializeCatalog();
     const existing = await database.collection('coupons').findOne({ code });
     if (existing) return sendError(response, 409, 'A coupon with this code already exists.');
     const coupon = {
       code, discountType, value,
-      maxUses,
+      maxUses: 1,
       usedCount: 0,
-      startsAt: parseDate(request.body?.startsAt, 'startsAt'),
-      endsAt: parseDate(request.body?.endsAt, 'endsAt'),
+      startsAt,
+      endsAt,
       courseIds,
       status: request.body?.status === 'inactive' ? 'inactive' : 'active',
       createdAt: new Date(),
       createdBy: request.admin.email,
     };
-    if (coupon.startsAt && coupon.endsAt && coupon.startsAt >= coupon.endsAt) return sendError(response, 400, 'endsAt must be later than startsAt.');
     if (courseIds.length) {
       const count = await database.collection('courses').countDocuments({ id: { $in: courseIds } });
       if (count !== courseIds.length) return sendError(response, 400, 'One or more restricted courses do not exist.');

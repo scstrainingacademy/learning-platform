@@ -27,12 +27,14 @@ const emptyMockInterview = {
 const panels = [
   ['analytics', 'Reports & analytics', Activity],
   ['learning', 'Course content', BookOpen],
-  ['learners', 'Learners & enrollments', Users],
-  ['payments', 'Orders & promotions', Wallet],
+  ['learners', 'Learners & Enrollments', Users],
+  ['payments', 'Orders & Promotions', Wallet],
   ['content', 'Content & campaigns', Megaphone],
   ['support', 'Support & reviews', MessageSquare],
   ['settings', 'Settings & admin access', Shield],
 ];
+
+const LEARNER_PAGE_SIZE = 10;
 
 const rolePanels = {
   owner: panels.map(([id]) => id),
@@ -237,6 +239,11 @@ function formatDateInput(date) {
   return `${year}-${month}-${day}`;
 }
 
+function dateInputBoundaryToIso(value, isEndOfDay = false) {
+  const time = isEndOfDay ? '23:59:59.999' : '00:00:00';
+  return new Date(`${value}T${time}`).toISOString();
+}
+
 function getAnalyticsPeriodRange(period, now = new Date()) {
   if (period === 'sixMonths') {
     return {
@@ -313,7 +320,7 @@ function Badge({ tone = 'slate', children }) {
   return <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${badgeTones[tone] || badgeTones.slate}`}>{children}</span>;
 }
 
-function Banner({ tone = 'error', children, onDismiss }) {
+function Banner({ tone = 'error', children, onDismiss, sharpCorners = false }) {
   const isError = tone === 'error';
   const Icon = isError ? CircleAlert : Check;
   const dismissRef = useRef(onDismiss);
@@ -325,10 +332,10 @@ function Banner({ tone = 'error', children, onDismiss }) {
   }, [children]);
 
   return (
-    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${isError ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`} role={isError ? 'alert' : 'status'}>
+    <div className={`flex items-start gap-3 ${sharpCorners ? 'rounded-none' : 'rounded-xl'} border px-4 py-3 text-sm ${isError ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`} role={isError ? 'alert' : 'status'}>
       <Icon className="mt-0.5 shrink-0" size={18} />
       <span className="flex-1">{children}</span>
-      {onDismiss && <button aria-label="Dismiss message" className="rounded p-0.5 opacity-70 transition hover:opacity-100" onClick={onDismiss} type="button"><X size={16} /></button>}
+      {onDismiss && <button aria-label="Dismiss message" className={`${sharpCorners ? 'rounded-none' : 'rounded'} p-0.5 opacity-70 transition hover:opacity-100`} onClick={onDismiss} type="button"><X size={16} /></button>}
     </div>
   );
 }
@@ -346,13 +353,13 @@ function PageHeader({ eyebrow, title, description, actions }) {
   );
 }
 
-function Card({ title, description, icon: Icon, actions, children, className = '', bodyClassName = 'p-5' }) {
+function Card({ title, description, icon: Icon, actions, children, className = '', bodyClassName = 'p-5', sharpCorners = false }) {
   return (
-    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
+    <section className={`overflow-hidden ${sharpCorners ? 'rounded-none' : 'rounded-2xl'} border border-slate-200 bg-white shadow-sm ${className}`}>
       {title && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
-            {Icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600"><Icon size={18} /></span>}
+            {Icon && <span className={`grid h-9 w-9 shrink-0 place-items-center ${sharpCorners ? 'rounded-none' : 'rounded-lg'} bg-violet-50 text-violet-600`}><Icon size={18} /></span>}
             <div className="min-w-0">
               <h2 className="m-0 font-[Manrope,sans-serif] text-base font-bold text-slate-900">{title}</h2>
               {description && <p className="m-0 mt-0.5 text-xs text-slate-500">{description}</p>}
@@ -556,11 +563,11 @@ function Avatar({ name }) {
   return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">{letters}</span>;
 }
 
-function Field({ label, value, onChange, type = 'text', required = false, ...props }) {
+function Field({ label, value, onChange, type = 'text', required = false, className = '', ...props }) {
   return (
     <label className={labelClass}>
       <span>{label}{required && <span className="text-rose-500"> *</span>}</span>
-      <input className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} type={type} required={required} {...props} />
+      <input className={`${inputClass} ${className}`} value={value} onChange={(event) => onChange(event.target.value)} type={type} required={required} {...props} />
     </label>
   );
 }
@@ -682,6 +689,9 @@ function AdminDashboardPage({ onLogout }) {
   const [adminRole, setAdminRole] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [learners, setLearners] = useState([]);
+  const [learnerPage, setLearnerPage] = useState(1);
+  const [learnerTotal, setLearnerTotal] = useState(0);
+  const [learnerListLoading, setLearnerListLoading] = useState(false);
   const [learnerQuery, setLearnerQuery] = useState('');
   const [enrollments, setEnrollments] = useState([]);
   const [enrollmentQuery, setEnrollmentQuery] = useState('');
@@ -731,7 +741,9 @@ function AdminDashboardPage({ onLogout }) {
         canManageCatalog ? apiRequest('/api/courses/admin') : Promise.resolve([]),
         canManageCatalog ? apiRequest('/api/mock-interviews/admin') : Promise.resolve([]),
         apiRequest('/api/admin/overview'),
-        canManageLearners ? apiRequest('/api/admin/learners') : Promise.resolve({ learners: [] }),
+        canManageLearners
+          ? apiRequest(`/api/admin/learners?page=1&limit=${LEARNER_PAGE_SIZE}`)
+          : Promise.resolve({ learners: [], page: 1, total: 0 }),
         canViewEnrollments ? apiRequest('/api/admin/enrollments') : Promise.resolve({ enrollments: [] }),
         canManageCatalog ? apiRequest('/api/courses/admin/homepage-featured') : Promise.resolve({ courseIds: [] }),
       ]);
@@ -741,6 +753,8 @@ function AdminDashboardPage({ onLogout }) {
       setHomepageCourseSelection(homepageCourses.courseIds);
       setOverview(overviewData);
       setLearners(learnerData.learners);
+      setLearnerPage(learnerData.page || 1);
+      setLearnerTotal(learnerData.total || 0);
       setEnrollments(enrollmentData.enrollments);
     } catch (requestError) {
       setError(requestError.message);
@@ -1001,13 +1015,20 @@ function AdminDashboardPage({ onLogout }) {
     }
   };
 
-  const searchLearners = async (search) => {
+  const searchLearners = async (search, page = 1) => {
     setError('');
+    setLearnerListLoading(true);
     try {
-      const result = await apiRequest(`/api/admin/learners?search=${encodeURIComponent(search)}`);
+      const params = new URLSearchParams({ page: String(page), limit: String(LEARNER_PAGE_SIZE) });
+      if (search) params.set('search', search);
+      const result = await apiRequest(`/api/admin/learners?${params}`);
       setLearners(result.learners);
+      setLearnerPage(result.page);
+      setLearnerTotal(result.total);
     } catch (requestError) {
       setError(requestError.message);
+    } finally {
+      setLearnerListLoading(false);
     }
   };
 
@@ -1844,6 +1865,29 @@ function AdminDashboardPage({ onLogout }) {
 
                 {!loading && !learners.length && <div className="px-4 py-10"><EmptyState description="Try a different name or email." icon={Users} title="No learner accounts found." /></div>}
               </div>
+              {learnerTotal > LEARNER_PAGE_SIZE && (
+                <nav aria-label="Learner pages" className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                  <button
+                    className={`${softButtonClass} !rounded-none !px-2.5 !py-1.5`}
+                    disabled={learnerPage <= 1 || loading || learnerListLoading}
+                    onClick={() => searchLearners(learnerQuery, learnerPage - 1)}
+                    type="button"
+                  >
+                    <ChevronLeft size={15} /> Previous
+                  </button>
+                  <span className="text-center text-xs font-medium text-slate-500">
+                    Showing {((learnerPage - 1) * LEARNER_PAGE_SIZE) + 1}–{Math.min(learnerPage * LEARNER_PAGE_SIZE, learnerTotal)} of {learnerTotal} learners · Page {learnerPage} of {Math.ceil(learnerTotal / LEARNER_PAGE_SIZE)}
+                  </span>
+                  <button
+                    className={`${softButtonClass} !rounded-none !px-2.5 !py-1.5`}
+                    disabled={learnerPage >= Math.ceil(learnerTotal / LEARNER_PAGE_SIZE) || loading || learnerListLoading}
+                    onClick={() => searchLearners(learnerQuery, learnerPage + 1)}
+                    type="button"
+                  >
+                    Next <ChevronRight size={15} />
+                  </button>
+                </nav>
+              )}
             </div>
           )}
 
@@ -2441,13 +2485,19 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
   const [importJson, setImportJson] = useState('');
   const [learnerSearch, setLearnerSearch] = useState('');
   const [learnerResults, setLearnerResults] = useState(learners);
+  const [learnerPage, setLearnerPage] = useState(1);
+  const [learnerTotal, setLearnerTotal] = useState(learners.length);
+  const [learnerLoading, setLearnerLoading] = useState(false);
   const [learnerProfile, setLearnerProfile] = useState(null);
   const [learnerForm, setLearnerForm] = useState({ learnerId: '', courseId: '' });
   const [enrollmentSearch, setEnrollmentSearch] = useState('');
   const [enrollments, setEnrollments] = useState([]);
+  const [enrollmentToTransfer, setEnrollmentToTransfer] = useState(null);
+  const [transferCourseId, setTransferCourseId] = useState('');
+  const [transferCourseMenuOpen, setTransferCourseMenuOpen] = useState(false);
   const [orders, setOrders] = useState([]);
   const [orderSearch, setOrderSearch] = useState('');
-  const [couponForm, setCouponForm] = useState({ code: '', discountType: 'percent', value: 10, maxUses: 0, startsAt: '', endsAt: '' });
+  const [couponForm, setCouponForm] = useState({ code: '', discountType: 'percent', value: 10, startsAt: '', endsAt: '' });
   const [coupons, setCoupons] = useState([]);
   const [promotionForm, setPromotionForm] = useState({ title: '', courseId: '', startsAt: '', endsAt: '', bannerText: '' });
   const [promotions, setPromotions] = useState([]);
@@ -2496,7 +2546,7 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
     if (panel === 'analytics') requests.push(loadAnalytics());
     if (panel === 'learning' && selectedCourseId) requests.push(loadSections(selectedCourseId));
     if (panel === 'learners') {
-      setLearnerResults(learners);
+      requests.push(loadLearners(learnerSearch, 1));
       requests.push(loadEnrollments());
     }
     if (panel === 'payments') {
@@ -2526,10 +2576,6 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
   }, [selectedCourseId]);
 
   useEffect(() => {
-    setLearnerResults(learners);
-  }, [learners]);
-
-  useEffect(() => {
     if (selectedSectionId) {
       const section = sections.find((item) => item.id === selectedSectionId);
       setLessons(section?.lessons || []);
@@ -2545,7 +2591,7 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
     try {
       const result = await action();
       if (reload) await reload();
-      setNotice(message || 'Saved.');
+      if (message !== '') setNotice(message || 'Saved.');
       return result;
     } catch (requestError) {
       setError(requestError.message);
@@ -2578,6 +2624,23 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
       setSections(data.sections);
       if (!data.sections.some((section) => section.id === selectedSectionId)) setSelectedSectionId(data.sections[0]?.id || '');
     } catch (requestError) { setError(requestError.message); }
+  }
+  async function loadLearners(search = learnerSearch, page = learnerPage) {
+    setLearnerLoading(true);
+    try {
+      const query = new URLSearchParams({ page: String(page), limit: String(LEARNER_PAGE_SIZE) });
+      if (search) query.set('search', search);
+      const data = await apiRequest(`/api/admin/platform/learners?${query}`);
+      setLearnerResults(data.learners);
+      setLearnerPage(data.page);
+      setLearnerTotal(data.total);
+      return data;
+    } catch (requestError) {
+      setError(requestError.message);
+      return null;
+    } finally {
+      setLearnerLoading(false);
+    }
   }
   async function loadEnrollments(search = enrollmentSearch) {
     try {
@@ -2664,10 +2727,7 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
 
   async function searchLearners(event) {
     event.preventDefault();
-    await perform(async () => {
-      const result = await apiRequest(`/api/admin/platform/learners?search=${encodeURIComponent(learnerSearch)}`);
-      setLearnerResults(result.learners);
-    }, '');
+    await loadLearners(learnerSearch, 1);
   }
 
   async function showLearner(learner) {
@@ -2700,15 +2760,57 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
     }, 'Course access granted.');
   }
 
+  async function transferEnrollment(event) {
+    event.preventDefault();
+    if (!enrollmentToTransfer || !transferCourseId) return;
+    const result = await perform(async () => {
+      const transferResult = await apiRequest(`/api/admin/platform/enrollments/${enrollmentToTransfer.id}/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: Number(transferCourseId) }),
+      });
+      await loadEnrollments();
+      return transferResult;
+    }, 'Enrollment transferred.');
+    if (result) {
+      setEnrollmentToTransfer(null);
+      setTransferCourseId('');
+      setTransferCourseMenuOpen(false);
+    }
+  }
+
   async function createCoupon(event) {
     event.preventDefault();
     await perform(async () => {
       await apiRequest('/api/admin/platform/coupons', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...couponForm, value: Number(couponForm.value), maxUses: Number(couponForm.maxUses) }),
+        body: JSON.stringify({
+          ...couponForm,
+          value: Number(couponForm.value),
+          maxUses: 1,
+          startsAt: dateInputBoundaryToIso(couponForm.startsAt),
+          endsAt: dateInputBoundaryToIso(couponForm.endsAt, true),
+        }),
       });
-      setCouponForm({ code: '', discountType: 'percent', value: 10, maxUses: 0, startsAt: '', endsAt: '' });
+      setCouponForm({ code: '', discountType: 'percent', value: 10, startsAt: '', endsAt: '' });
     }, 'Coupon created.', loadCoupons);
+  }
+
+  async function schedulePromotion(event) {
+    event.preventDefault();
+    await perform(async () => {
+      await apiRequest('/api/admin/platform/promotions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...promotionForm,
+          courseId: Number(promotionForm.courseId),
+          startsAt: dateInputBoundaryToIso(promotionForm.startsAt),
+          endsAt: dateInputBoundaryToIso(promotionForm.endsAt, true),
+        }),
+      });
+      setPromotionForm({ title: '', courseId: '', startsAt: '', endsAt: '', bannerText: '' });
+    }, 'Promotion scheduled.', loadPromotions);
   }
 
   async function createContent(event) {
@@ -2846,8 +2948,78 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
       <PageHeader
         title={activePanel ? activePanel[1] : 'Platform operations'}
       />
-      {error && <Banner onDismiss={() => setError('')} tone="error">{error}</Banner>}
-      {notice && <Banner onDismiss={() => setNotice('')} tone="success">{notice}</Banner>}
+      {error && <Banner onDismiss={() => setError('')} sharpCorners={['learners', 'payments'].includes(panel)} tone="error">{error}</Banner>}
+      {notice && <Banner onDismiss={() => setNotice('')} sharpCorners={['learners', 'payments'].includes(panel)} tone="success">{notice}</Banner>}
+
+      {enrollmentToTransfer && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/50 p-4" role="presentation">
+          <section aria-labelledby="transfer-enrollment-title" aria-modal="true" className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-none bg-white p-6 shadow-2xl" role="dialog">
+            <h2 className="m-0 text-lg font-semibold text-slate-900" id="transfer-enrollment-title">Transfer enrollment</h2>
+            <p className="mb-5 mt-2 text-sm leading-6 text-slate-600">
+              Move {enrollmentToTransfer.learnerName}&apos;s enrollment from <strong>{enrollmentToTransfer.courseTitle}</strong> to another published course. Progress will reset to 0%.
+            </p>
+            <form className="space-y-5" onSubmit={transferEnrollment}>
+              <div className={labelClass}>
+                <span>Target course</span>
+                <div className="relative">
+                  <button
+                    aria-controls="transfer-course-options"
+                    aria-expanded={transferCourseMenuOpen}
+                    aria-haspopup="listbox"
+                    className={`${inputClass} !rounded-none flex items-center justify-between gap-3 text-left`}
+                    onClick={() => setTransferCourseMenuOpen((open) => !open)}
+                    type="button"
+                  >
+                    <span className={transferCourseId ? 'truncate text-slate-900' : 'truncate text-slate-500'}>
+                      {courses.find((course) => String(course.id) === transferCourseId)?.title || 'Select a published course'}
+                    </span>
+                    <ChevronDown aria-hidden="true" className={`shrink-0 transition-transform ${transferCourseMenuOpen ? 'rotate-180' : ''}`} size={16} />
+                  </button>
+                  <div
+                    aria-hidden={!transferCourseMenuOpen}
+                    className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${transferCourseMenuOpen ? 'mt-2 grid-rows-[1fr] opacity-100' : 'pointer-events-none mt-0 grid-rows-[0fr] opacity-0'}`}
+                  >
+                    <div className="min-h-0 overflow-hidden border border-slate-200 bg-white shadow-lg">
+                      <div aria-label="Published courses" className="max-h-48 overflow-y-auto p-1" id="transfer-course-options" role="listbox">
+                        {courses.filter((course) => course.status === 'published' && Number(course.id) !== Number(enrollmentToTransfer.courseId)).map((course) => (
+                          <button
+                            aria-selected={String(course.id) === transferCourseId}
+                            className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition ${String(course.id) === transferCourseId ? 'bg-violet-50 font-semibold text-violet-800' : 'text-slate-700 hover:bg-slate-50'}`}
+                            key={course.id}
+                            onClick={() => { setTransferCourseId(String(course.id)); setTransferCourseMenuOpen(false); }}
+                            role="option"
+                            tabIndex={transferCourseMenuOpen ? 0 : -1}
+                            type="button"
+                          >
+                            <span className="truncate">{course.title}</span>
+                            {String(course.id) === transferCourseId && <Check aria-hidden="true" className="shrink-0" size={16} />}
+                          </button>
+                        ))}
+                        {!courses.some((course) => course.status === 'published' && Number(course.id) !== Number(enrollmentToTransfer.courseId)) && (
+                          <p className="m-0 px-3 py-2.5 text-sm text-slate-500">No other published courses available.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  className={`${softButtonClass} !rounded-none`}
+                  disabled={busy}
+                  onClick={() => { setEnrollmentToTransfer(null); setTransferCourseId(''); setTransferCourseMenuOpen(false); }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button className={`${buttonClass} !rounded-none`} disabled={busy || !transferCourseId} type="submit">
+                  {busy ? 'Transferring…' : 'Transfer enrollment'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {panelLoading ? <AdminSectionSkeleton showHeader={false} view={`tools:${panel}`} /> : (
         <>
@@ -3017,37 +3189,60 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
               <form className="flex flex-wrap gap-2" onSubmit={searchLearners}>
                 <label className="relative block min-w-[220px] flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input aria-label="Search learners" className={`${inputClass} pl-9`} onChange={(event) => setLearnerSearch(event.target.value)} placeholder="Search learner name, email or phone" value={learnerSearch} />
+                  <input aria-label="Search learners" className={`${inputClass} !rounded-none pl-9`} onChange={(event) => setLearnerSearch(event.target.value)} placeholder="Search learner name, email or phone" value={learnerSearch} />
                 </label>
-                <button className={buttonClass}>Search</button>
+                <button className={`${buttonClass} !rounded-none`} disabled={learnerLoading}>{learnerLoading ? 'Searching…' : 'Search'}</button>
               </form>
-              <DataTable headers={['Learner', 'Email / phone', 'Status', 'Joined', 'Actions']} title="Learners">
+              <DataTable className="!rounded-none" headers={['Learner', 'Email / phone', 'Status', 'Joined', 'Actions']} title="Learners">
                 {visibleLearners.map((learner) => (
                   <tr key={learner.id}>
                     <Cell><button className="border-0 bg-transparent p-0 text-left font-semibold text-violet-700 hover:underline" onClick={() => showLearner(learner)} type="button">{learner.name || 'Unnamed learner'}</button><div className="text-[10px] text-slate-400">{learner.id}</div></Cell>
                     <Cell>{learner.identifier}</Cell>
                     <Cell><Badge tone={statusTone(learner.status)}>{learner.status}</Badge></Cell>
                     <Cell>{learner.createdAt ? new Date(learner.createdAt).toLocaleDateString() : '—'}</Cell>
-                    <Cell><div className="flex items-center gap-3"><button className={linkClass} onClick={() => showLearner(learner)} type="button">View</button><button className="text-xs font-semibold text-amber-700 hover:text-amber-900 hover:underline" onClick={() => perform(() => apiRequest(`/api/admin/learners/${learner.id}/request-login-code`, { method: 'POST' }), 'Login code sent through the configured channel.')} type="button">Send login code</button></div></Cell>
+                    <Cell><button className={linkClass} onClick={() => showLearner(learner)} type="button">View</button></Cell>
                   </tr>
                 ))}
                 {!visibleLearners.length && <EmptyRow cols={5}>No learners found.</EmptyRow>}
               </DataTable>
+              {learnerTotal > LEARNER_PAGE_SIZE && (
+                <nav aria-label="Learner pages" className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                  <button
+                    className={`${softButtonClass} !rounded-none !px-2.5 !py-1.5`}
+                    disabled={learnerPage <= 1 || learnerLoading}
+                    onClick={() => loadLearners(learnerSearch, learnerPage - 1)}
+                    type="button"
+                  >
+                    <ChevronLeft size={15} /> Previous
+                  </button>
+                  <span className="text-center text-xs font-medium text-slate-500">
+                    Showing {((learnerPage - 1) * LEARNER_PAGE_SIZE) + 1}–{Math.min(learnerPage * LEARNER_PAGE_SIZE, learnerTotal)} of {learnerTotal} learners · Page {learnerPage} of {Math.ceil(learnerTotal / LEARNER_PAGE_SIZE)}
+                  </span>
+                  <button
+                    className={`${softButtonClass} !rounded-none !px-2.5 !py-1.5`}
+                    disabled={learnerPage >= Math.ceil(learnerTotal / LEARNER_PAGE_SIZE) || learnerLoading}
+                    onClick={() => loadLearners(learnerSearch, learnerPage + 1)}
+                    type="button"
+                  >
+                    Next <ChevronRight size={15} />
+                  </button>
+                </nav>
+              )}
             </div>
 
             <div className="space-y-4">
               <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); loadEnrollments(); }}>
-                <input aria-label="Filter enrollments" className={`${inputClass} flex-1`} onChange={(event) => setEnrollmentSearch(event.target.value)} placeholder="Filter enrollments by learner or course" value={enrollmentSearch} />
-                <button className={softButtonClass}>Filter</button>
+                <input aria-label="Filter enrollments" className={`${inputClass} !rounded-none flex-1`} onChange={(event) => setEnrollmentSearch(event.target.value)} placeholder="Filter enrollments by learner or course" value={enrollmentSearch} />
+                <button className={`${softButtonClass} !rounded-none`}>Filter</button>
               </form>
-              <DataTable headers={['Learner', 'Course', 'Progress', 'Enrolled', 'Access']} title="Enrollments">
+              <DataTable className="!rounded-none" headers={['Learner', 'Course', 'Progress', 'Enrolled', 'Access']} title="Enrollments">
                 {enrollments.map((item) => (
                   <tr key={item.id}>
                     <Cell>{item.learnerName}<div className="text-xs text-slate-400">{item.learnerIdentifier}</div></Cell>
                     <Cell>{item.courseTitle}</Cell>
                     <Cell><div className="flex items-center gap-2"><div aria-hidden="true" className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.min(100, Math.max(0, Number(item.progress) || 0))}%` }} /></div><span className="text-xs text-slate-600">{item.progress}%</span></div></Cell>
                     <Cell>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}</Cell>
-                    <Cell><div className="flex items-center gap-3"><button className={dangerLinkClass} onClick={() => perform(() => apiRequest(`/api/admin/platform/enrollments/${item.id}`, { method: 'DELETE' }), 'Enrollment revoked.', loadEnrollments)} type="button">Revoke</button>{['owner', 'course_manager'].includes(role) && <button className={linkClass} onClick={() => perform(() => apiRequest(`/api/admin/platform/enrollments/${item.id}/transfer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseId: Number(prompt('New published course ID?')) }) }), 'Enrollment transferred.', loadEnrollments)} type="button">Transfer</button>}</div></Cell>
+                    <Cell><div className="flex items-center gap-3"><button className={dangerLinkClass} onClick={() => perform(() => apiRequest(`/api/admin/platform/enrollments/${item.id}`, { method: 'DELETE' }), 'Enrollment revoked.', loadEnrollments)} type="button">Revoke</button>{['owner', 'course_manager'].includes(role) && <button className={linkClass} onClick={() => { setError(''); setNotice(''); setTransferCourseId(''); setTransferCourseMenuOpen(false); setEnrollmentToTransfer(item); }} type="button">Transfer</button>}</div></Cell>
                   </tr>
                 ))}
                 {!enrollments.length && <EmptyRow cols={5}>No enrollments found.</EmptyRow>}
@@ -3056,23 +3251,23 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
           </div>
 
           <div className="space-y-6">
-            <Card description="Select a learner from the list first" title="Grant course access">
+            <Card className="!rounded-none" description="Select a learner from the list first" title="Grant course access">
               <form className="space-y-4" onSubmit={manualEnroll}>
-                <Field label="Learner ID (select a learner)" onChange={(learnerId) => setLearnerForm({ ...learnerForm, learnerId })} required value={learnerForm.learnerId} />
-                <label className={labelClass}>Published course<select className={inputClass} onChange={(event) => setLearnerForm({ ...learnerForm, courseId: event.target.value })} required value={learnerForm.courseId}><option value="">Select a course</option>{courses.filter((course) => course.status === 'published' || !course.status).map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select></label>
-                <button className={`${buttonClass} w-full`}>Enroll learner</button>
+                <Field className="!rounded-none" label="Learner ID (select a learner)" onChange={(learnerId) => setLearnerForm({ ...learnerForm, learnerId })} required value={learnerForm.learnerId} />
+                <label className={labelClass}>Published course<select className={`${inputClass} !rounded-none`} onChange={(event) => setLearnerForm({ ...learnerForm, courseId: event.target.value })} required value={learnerForm.courseId}><option value="">Select a course</option>{courses.filter((course) => course.status === 'published' || !course.status).map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select></label>
+                <button className={`${buttonClass} !rounded-none w-full`}>Enroll learner</button>
               </form>
             </Card>
             {learnerProfile && (
-              <Card title="Learner account">
+              <Card className="!rounded-none" title="Learner account">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <Avatar name={learnerProfile.learner.name} />
                     <p className="m-0 text-xs leading-5 text-slate-600">{learnerProfile.learner.identifier}<br />Joined {learnerProfile.learner.createdAt ? new Date(learnerProfile.learner.createdAt).toLocaleDateString() : '—'} · {learnerProfile.enrollments.length} courses</p>
                   </div>
-                  <Field label="Name" onChange={(name) => setLearnerProfile({ ...learnerProfile, learner: { ...learnerProfile.learner, name } })} value={learnerProfile.learner.name || ''} />
-                  {['owner', 'support'].includes(role) && <button className={`${buttonClass} w-full`} onClick={saveProfile} type="button">Save profile</button>}
-                  <div className="space-y-2">{learnerProfile.enrollments.map((item) => <p className="m-0 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700" key={item.courseId}><span className="truncate">{item.courseTitle}</span><strong>{item.progress}%</strong></p>)}</div>
+                  <Field className="!rounded-none" label="Name" onChange={(name) => setLearnerProfile({ ...learnerProfile, learner: { ...learnerProfile.learner, name } })} value={learnerProfile.learner.name || ''} />
+                  {['owner', 'support'].includes(role) && <button className={`${buttonClass} !rounded-none w-full`} onClick={saveProfile} type="button">Save profile</button>}
+                  <div className="space-y-2">{learnerProfile.enrollments.map((item) => <p className="m-0 flex items-center justify-between bg-slate-50 px-3 py-2 text-xs text-slate-700" key={item.courseId}><span className="truncate">{item.courseTitle}</span><strong>{item.progress}%</strong></p>)}</div>
                 </div>
               </Card>
             )}
@@ -3084,36 +3279,36 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
       {panel === 'payments' && (
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
-            <Card description="Offer a percentage or fixed discount" icon={BadgePercent} title="Create discount coupon">
+            <Card description="Offer a percentage or fixed discount" icon={BadgePercent} sharpCorners title="Create discount coupon">
               <OperationsForm onSubmit={createCoupon}>
-                <Field label="Coupon code" onChange={(code) => setCouponForm({ ...couponForm, code: code.toUpperCase() })} required value={couponForm.code} />
-                <label className={labelClass}>Discount type<select className={inputClass} onChange={(event) => setCouponForm({ ...couponForm, discountType: event.target.value })} value={couponForm.discountType}><option value="percent">Percent</option><option value="fixed">Fixed INR</option></select></label>
-                <Field label="Value" min="1" onChange={(value) => setCouponForm({ ...couponForm, value })} required type="number" value={couponForm.value} />
-                <Field label="Maximum uses (0 = unlimited)" min="0" onChange={(maxUses) => setCouponForm({ ...couponForm, maxUses })} type="number" value={couponForm.maxUses} />
-                <Field label="Starts at (optional)" onChange={(startsAt) => setCouponForm({ ...couponForm, startsAt })} type="datetime-local" value={couponForm.startsAt} />
-                <Field label="Ends at (optional)" onChange={(endsAt) => setCouponForm({ ...couponForm, endsAt })} type="datetime-local" value={couponForm.endsAt} />
-                <div className="sm:col-span-2"><button className={`${buttonClass} w-full sm:w-auto`} disabled={busy}>Create coupon</button></div>
+                <Field className="!rounded-none" label="Coupon code" onChange={(code) => setCouponForm({ ...couponForm, code: code.toUpperCase() })} required value={couponForm.code} />
+                <label className={labelClass}>Discount type<select className={`${inputClass} !rounded-none`} onChange={(event) => setCouponForm({ ...couponForm, discountType: event.target.value })} value={couponForm.discountType}><option value="percent">Percent</option><option value="fixed">Fixed INR</option></select></label>
+                <Field className="!rounded-none" label="Value" min="1" onChange={(value) => setCouponForm({ ...couponForm, value })} required type="number" value={couponForm.value} />
+                <label className={labelClass}>Maximum uses per coupon<input className={`${inputClass} !rounded-none`} readOnly value="1" /></label>
+                <Field className="!rounded-none" label="Starts at" onChange={(startsAt) => setCouponForm({ ...couponForm, startsAt })} required type="date" value={couponForm.startsAt} />
+                <Field className="!rounded-none" label="Ends at" onChange={(endsAt) => setCouponForm({ ...couponForm, endsAt })} required type="date" value={couponForm.endsAt} />
+                <div className="sm:col-span-2"><button className={`${buttonClass} !rounded-none w-full sm:w-auto`} disabled={busy}>Create coupon</button></div>
               </OperationsForm>
             </Card>
-            <Card description="Show a banner for a course during a time window" icon={Megaphone} title="Schedule promotion">
-              <OperationsForm onSubmit={async (event) => { event.preventDefault(); await perform(async () => { await apiRequest('/api/admin/platform/promotions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...promotionForm, courseId: Number(promotionForm.courseId), startsAt: new Date(promotionForm.startsAt).toISOString(), endsAt: new Date(promotionForm.endsAt).toISOString() }) }); setPromotionForm({ title: '', courseId: '', startsAt: '', endsAt: '', bannerText: '' }); }, 'Promotion scheduled.', loadPromotions); }}>
-                <Field label="Promotion title" onChange={(title) => setPromotionForm({ ...promotionForm, title })} required value={promotionForm.title} />
-                <label className={labelClass}>Course<select className={inputClass} onChange={(event) => setPromotionForm({ ...promotionForm, courseId: event.target.value })} required value={promotionForm.courseId}><option value="">Select course</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select></label>
-                <Field label="Starts" onChange={(startsAt) => setPromotionForm({ ...promotionForm, startsAt })} required type="datetime-local" value={promotionForm.startsAt} />
-                <Field label="Ends" onChange={(endsAt) => setPromotionForm({ ...promotionForm, endsAt })} required type="datetime-local" value={promotionForm.endsAt} />
-                <div className="sm:col-span-2"><Field label="Banner text" onChange={(bannerText) => setPromotionForm({ ...promotionForm, bannerText })} value={promotionForm.bannerText} /></div>
-                <div className="sm:col-span-2"><button className={`${buttonClass} w-full sm:w-auto`} disabled={busy}>Schedule promotion</button></div>
+            <Card description="Show a banner for a course during a time window" icon={Megaphone} sharpCorners title="Schedule promotion">
+              <OperationsForm onSubmit={schedulePromotion}>
+                <Field className="!rounded-none" label="Promotion title" onChange={(title) => setPromotionForm({ ...promotionForm, title })} required value={promotionForm.title} />
+                <label className={labelClass}>Course<select className={`${inputClass} !rounded-none`} onChange={(event) => setPromotionForm({ ...promotionForm, courseId: event.target.value })} required value={promotionForm.courseId}><option value="">Select course</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}</select></label>
+                <Field className="!rounded-none" label="Starts" onChange={(startsAt) => setPromotionForm({ ...promotionForm, startsAt })} required type="date" value={promotionForm.startsAt} />
+                <Field className="!rounded-none" label="Ends" onChange={(endsAt) => setPromotionForm({ ...promotionForm, endsAt })} required type="date" value={promotionForm.endsAt} />
+                <div className="sm:col-span-2"><Field className="!rounded-none" label="Banner text" onChange={(bannerText) => setPromotionForm({ ...promotionForm, bannerText })} value={promotionForm.bannerText} /></div>
+                <div className="sm:col-span-2"><button className={`${buttonClass} !rounded-none w-full sm:w-auto`} disabled={busy}>Schedule promotion</button></div>
               </OperationsForm>
             </Card>
           </div>
 
-          <DataTable headers={['Code', 'Discount', 'Uses', 'Window', 'Status', 'Action']} title="Coupons">
+          <DataTable className="!rounded-none" headers={['Code', 'Discount', 'Uses', 'Window', 'Status', 'Action']} title="Coupons">
             {coupons.map((coupon) => <tr key={coupon.id}><Cell><strong className="font-mono text-slate-900">{coupon.code}</strong></Cell><Cell>{coupon.discountType === 'percent' ? `${coupon.value}%` : `₹${coupon.value}`}</Cell><Cell>{coupon.usedCount}{coupon.maxUses ? ` / ${coupon.maxUses}` : ' / ∞'}</Cell><Cell>{coupon.endsAt ? new Date(coupon.endsAt).toLocaleDateString() : 'No expiry'}</Cell><Cell><Badge tone={statusTone(coupon.status)}>{coupon.status}</Badge></Cell><Cell><button className={linkClass} onClick={() => action(`/api/admin/platform/coupons/${coupon.id}`, { status: coupon.status === 'active' ? 'inactive' : 'active' }, 'Coupon status updated.', loadCoupons)} type="button">{coupon.status === 'active' ? 'Disable' : 'Enable'}</button></Cell></tr>)}
             {!coupons.length && <EmptyRow cols={6}>No coupons created yet.</EmptyRow>}
           </DataTable>
 
           {['owner', 'course_manager'].includes(role) && (
-            <DataTable headers={['Promotion', 'Course', 'Starts', 'Ends', 'Action']} title="Scheduled promotions">
+            <DataTable className="!rounded-none" headers={['Promotion', 'Course', 'Starts', 'Ends', 'Action']} title="Scheduled promotions">
               {promotions.map((promo) => <tr key={promo.id}><Cell>{promo.title}<div className="text-xs text-slate-400">{promo.bannerText}</div></Cell><Cell>{promo.courseTitle}</Cell><Cell>{new Date(promo.startsAt).toLocaleString()}</Cell><Cell>{new Date(promo.endsAt).toLocaleString()}</Cell><Cell><button className={dangerLinkClass} onClick={() => perform(() => apiRequest(`/api/admin/platform/promotions/${promo.id}`, { method: 'DELETE' }), 'Promotion removed.', loadPromotions)} type="button">Remove</button></Cell></tr>)}
               {!promotions.length && <EmptyRow cols={5}>No promotions scheduled.</EmptyRow>}
             </DataTable>
@@ -3124,12 +3319,12 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
               <div className="flex flex-wrap items-center gap-2">
                 <label className="relative block min-w-[220px] max-w-md flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input aria-label="Search orders" className={`${inputClass} pl-9`} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Search order, name or email" value={orderSearch} />
+                  <input aria-label="Search orders" className={`${inputClass} !rounded-none pl-9`} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Search order, name or email" value={orderSearch} />
                 </label>
-                <button className={buttonClass} onClick={() => loadOrders()} type="button">Search orders</button>
-                <button className={softButtonClass} onClick={() => perform(() => downloadAdminFile('/api/admin/platform/reports/export?type=orders', 'orders.csv'), 'Orders exported.')} type="button"><Download size={14} />Export</button>
+                <button className={`${buttonClass} !rounded-none`} onClick={() => loadOrders()} type="button">Search orders</button>
+                <button className={`${softButtonClass} !rounded-none`} onClick={() => perform(() => downloadAdminFile('/api/admin/platform/reports/export?type=orders', 'orders.csv'), 'Orders exported.')} type="button"><Download size={14} />Export</button>
               </div>
-              <DataTable headers={['Order / learner', 'Courses', 'Amount', 'Status', 'Payment / refunds', 'Action']} title="Orders">
+              <DataTable className="!rounded-none" headers={['Order / learner', 'Courses', 'Amount', 'Status', 'Payment / refunds', 'Action']} title="Orders">
                 {orders.map((order) => (
                   <tr key={order.id}>
                     <Cell><strong className="text-slate-900">{order.razorpayOrderId || order.id}</strong><div className="text-xs text-slate-400">{order.userName} · {order.userEmail}</div></Cell>
@@ -3212,7 +3407,18 @@ function AdminOperationsPage({ courses, learners, onRefresh, panel, onPanelChang
                     <div className="flex items-center gap-1.5"><Badge tone={statusTone(ticket.status)}>{String(ticket.status).replaceAll('_', ' ')}</Badge><Badge tone={statusTone(ticket.priority)}>{ticket.priority}</Badge></div>
                   </div>
                   <p className="m-0 mt-2 text-sm leading-6 text-slate-600">{ticket.body}</p>
-                  <p className="m-0 mt-2 text-xs text-slate-400">{ticket.userName} · {ticket.userEmail}</p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="m-0 text-xs text-slate-400">{ticket.userName} · {ticket.userEmail}</p>
+                    {ticket.userId && (
+                      <button
+                        className="text-xs font-semibold text-violet-700 transition hover:text-violet-900 hover:underline"
+                        onClick={() => perform(() => apiRequest(`/api/admin/learners/${ticket.userId}/request-login-code`, { method: 'POST' }), 'Login code sent through the configured channel.')}
+                        type="button"
+                      >
+                        Send login code
+                      </button>
+                    )}
+                  </div>
                   <form className="mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); action(`/api/admin/platform/support/tickets/${ticket.id}`, { status: form.get('status'), priority: form.get('priority'), note: form.get('note') }, 'Ticket updated.', loadTickets); }}>
                     <select aria-label="Ticket status" className={inputClass} defaultValue={ticket.status} name="status"><option>open</option><option>in_progress</option><option>resolved</option><option>closed</option></select>
                     <select aria-label="Ticket priority" className={inputClass} defaultValue={ticket.priority} name="priority"><option>low</option><option>normal</option><option>high</option><option>urgent</option></select>

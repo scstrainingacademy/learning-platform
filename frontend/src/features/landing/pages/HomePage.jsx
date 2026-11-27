@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, ArrowUpRight, Blocks, BriefcaseBusiness, Check, ChevronDown, Code2, Heart,
+  ArrowRight, ArrowUpRight, Blocks, BriefcaseBusiness, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Heart,
   MessageCircle, Palette, PhoneCall, Sparkles, Star, UserRoundCheck, Video, Zap,
 } from 'lucide-react';
 import Navbar from '../components/Navbar.jsx';
@@ -28,6 +28,12 @@ const courseOutcomes = [
     text: 'Apply your new skills, build your portfolio, and take confident next steps in your career.',
   },
 ];
+
+const hangingBannerSlideVariants = {
+  enter: (direction) => ({ x: direction > 0 ? 48 : -48, opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (direction) => ({ x: direction > 0 ? -48 : 48, opacity: 0 }),
+};
 
 const benefits = [
   {
@@ -214,10 +220,35 @@ function HomePage() {
   const [wishlistCourseIds, setWishlistCourseIds] = useState([]);
   const [cartError, setCartError] = useState('');
   const [publicContent, setPublicContent] = useState({ banners: [], announcements: [], promotions: [] });
+  const [activeHangingBannerIndex, setActiveHangingBannerIndex] = useState(0);
+  const [bannerSlideDirection, setBannerSlideDirection] = useState(1);
+  const [isHangingBannerHovered, setIsHangingBannerHovered] = useState(false);
+  const [isHangingBannerFocused, setIsHangingBannerFocused] = useState(false);
   const [featuredCoursesError, setFeaturedCoursesError] = useState('');
   const [featuredCourses, setFeaturedCourses] = useState([]);
   const partnerTrackRef = useRef(null);
+  const bannerTouchStartXRef = useRef(null);
   const shouldReduceMotion = useReducedMotion();
+  const hangingBannerItems = [
+    ...publicContent.banners.map((banner) => ({ ...banner, type: 'banner' })),
+    ...publicContent.promotions.map((promotion) => ({
+      id: `promotion-${promotion.id}`,
+      type: 'promotion',
+      title: promotion.title,
+      body: promotion.bannerText || promotion.courseTitle,
+      link: `/learn/catalog-${promotion.courseId}`,
+    })),
+  ];
+  const bannerItemCount = hangingBannerItems.length;
+  const activeHangingBanner = bannerItemCount > 0
+    ? hangingBannerItems[activeHangingBannerIndex % bannerItemCount]
+    : null;
+
+  const showHangingBanner = (direction) => {
+    if (bannerItemCount < 2) return;
+    setBannerSlideDirection(direction);
+    setActiveHangingBannerIndex((current) => (current + direction + bannerItemCount) % bannerItemCount);
+  };
 
   useEffect(() => {
     const updateCart = (cart) => setCartCourseIds(cart.map((item) => item.id));
@@ -244,6 +275,23 @@ function HomePage() {
       .then(setPublicContent)
       .catch((error) => console.error('Failed to load academy updates:', error));
   }, []);
+
+  useEffect(() => {
+    setActiveHangingBannerIndex((current) => (bannerItemCount > 0 ? current % bannerItemCount : 0));
+  }, [bannerItemCount]);
+
+  useEffect(() => {
+    if (shouldReduceMotion || isHangingBannerHovered || isHangingBannerFocused || bannerItemCount < 2) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setBannerSlideDirection(1);
+      setActiveHangingBannerIndex((current) => (current + 1) % bannerItemCount);
+    }, 5500);
+
+    return () => window.clearInterval(timer);
+  }, [activeHangingBannerIndex, bannerItemCount, isHangingBannerFocused, isHangingBannerHovered, shouldReduceMotion]);
 
   useEffect(() => {
     let active = true;
@@ -323,31 +371,100 @@ function HomePage() {
   }, []);
 
   return (
-    <div className={`marketing-page ${homeTailwindStyles}`}>
+    <div className={`marketing-page ${homeTailwindStyles} ${bannerItemCount > 0 ? 'has-hanging-banners' : ''}`}>
       <Navbar />
-
-      {(publicContent.banners.length > 0 || publicContent.announcements.length > 0 || publicContent.promotions.length > 0) && (
-        <section className="space-y-2 bg-[#f7f5fb] px-5 py-3 sm:px-8" aria-label="Academy updates">
-          {publicContent.banners.map((banner) => (
-            <article className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3" key={banner.id}>
-              <div><h2 className="m-0 text-sm font-bold text-slate-900">{banner.title}</h2><p className="mb-0 mt-1 text-sm text-slate-600">{banner.body}</p></div>
-              {banner.link && <a className="shrink-0 rounded-lg bg-[#7A1F2B] px-4 py-2 text-xs font-bold text-white no-underline" href={banner.link}>Learn more</a>}
-            </article>
-          ))}
-          {publicContent.announcements.map((announcement) => (
-            <article className="mx-auto max-w-6xl rounded-lg border border-violet-100 bg-white px-4 py-2 text-sm text-slate-700" key={announcement.id}><strong>{announcement.title}</strong><span className="ml-2">{announcement.body}</span></article>
-          ))}
-          {publicContent.promotions.map((promotion) => (
-            <article className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" key={promotion.id}>
-              <div><p className="m-0 text-[10px] font-bold uppercase tracking-wider text-amber-800">Limited-time promotion</p><h2 className="mb-0 mt-1 text-sm font-bold text-slate-900">{promotion.title}</h2><p className="mb-0 mt-1 text-sm text-slate-700">{promotion.bannerText || promotion.courseTitle}</p></div>
-              <a className="shrink-0 rounded-lg bg-[#7A1F2B] px-4 py-2 text-xs font-bold text-white no-underline" href={`/learn/catalog-${promotion.courseId}`}>Explore course</a>
-            </article>
-          ))}
-        </section>
-      )}
 
       <main>
         <section className="landing-hero">
+          {activeHangingBanner && (
+            <aside
+              className="homepage-hanging-banners"
+              role="region"
+              aria-roledescription="carousel"
+              aria-label="Featured banners and promotions"
+              onPointerEnter={(event) => {
+                if (event.pointerType !== 'touch') setIsHangingBannerHovered(true);
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType !== 'touch') setIsHangingBannerHovered(false);
+              }}
+              onFocusCapture={() => setIsHangingBannerFocused(true)}
+              onBlurCapture={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setIsHangingBannerFocused(false);
+              }}
+              onTouchStart={(event) => {
+                bannerTouchStartXRef.current = event.touches[0]?.clientX ?? null;
+              }}
+              onTouchEnd={(event) => {
+                const startX = bannerTouchStartXRef.current;
+                const endX = event.changedTouches[0]?.clientX;
+                bannerTouchStartXRef.current = null;
+                if (startX === null || endX === undefined || Math.abs(endX - startX) < 40) return;
+                showHangingBanner(endX < startX ? 1 : -1);
+              }}
+            >
+              <article
+                className="homepage-hanging-banner"
+                aria-roledescription="slide"
+                aria-label={`Banner ${activeHangingBannerIndex + 1} of ${bannerItemCount}`}
+              >
+                <span className="homepage-banner-thread" aria-hidden="true" />
+                <div
+                  className="homepage-banner-sign"
+                >
+                  <div className="homepage-banner-content-viewport">
+                    <AnimatePresence initial={false} mode="sync" custom={bannerSlideDirection}>
+                      <motion.div
+                        key={activeHangingBanner.id}
+                        custom={bannerSlideDirection}
+                        variants={hangingBannerSlideVariants}
+                        initial={shouldReduceMotion ? false : 'enter'}
+                        animate="center"
+                        exit={shouldReduceMotion ? undefined : 'exit'}
+                        transition={{
+                          duration: shouldReduceMotion ? 0 : 0.55,
+                          ease: [0.22, 1, 0.36, 1],
+                        }}
+                        className="homepage-banner-slide"
+                      >
+                        <div>
+                          {activeHangingBanner.type === 'promotion' && <p className="homepage-banner-kicker">Limited-time promotion</p>}
+                          <h2>{activeHangingBanner.title}</h2>
+                          <p>{activeHangingBanner.body}</p>
+                        </div>
+                        {activeHangingBanner.link && (
+                          <a href={activeHangingBanner.link}>
+                            {activeHangingBanner.type === 'promotion' ? 'Explore course' : 'Learn more'}
+                          </a>
+                        )}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                  {bannerItemCount > 1 && (
+                    <nav className="homepage-banner-controls" aria-label="Banner navigation">
+                      <button
+                        type="button"
+                        aria-label="Previous banner"
+                        onClick={() => showHangingBanner(-1)}
+                      >
+                        <ChevronLeft size={14} aria-hidden="true" />
+                      </button>
+                      <span aria-label={`Slide ${activeHangingBannerIndex + 1} of ${bannerItemCount}`}>
+                        {activeHangingBannerIndex + 1} / {bannerItemCount}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Next banner"
+                        onClick={() => showHangingBanner(1)}
+                      >
+                        <ChevronRight size={14} aria-hidden="true" />
+                      </button>
+                    </nav>
+                  )}
+                </div>
+              </article>
+            </aside>
+          )}
           <video
             className="hero-background-video"
             src="/videos/hero.mp4"
@@ -388,6 +505,14 @@ function HomePage() {
           </div>
           <a href="#courses" className="hero-scroll"><span /> SCROLL TO EXPLORE <ChevronDown size={13} /></a>
         </section>
+
+        {publicContent.announcements.length > 0 && (
+          <section className="space-y-2 bg-[#f7f5fb] px-5 py-3 sm:px-8" aria-label="Academy updates">
+            {publicContent.announcements.map((announcement) => (
+              <article className="mx-auto max-w-6xl rounded-lg border border-violet-100 bg-white px-4 py-2 text-sm text-slate-700" key={announcement.id}><strong>{announcement.title}</strong><span className="ml-2">{announcement.body}</span></article>
+            ))}
+          </section>
+        )}
 
         <section className="trust-strip" aria-label="Learner outcomes">
           <p>GOOD THINGS HAPPEN WHEN YOU KEEP LEARNING</p>
@@ -664,13 +789,16 @@ function HomePage() {
       </main>
 
       <a
-        className="fixed bottom-5 right-16 z-30 block size-16 max-w-[42vw] overflow-hidden rounded-full transition-transform duration-300 hover:scale-110 active:scale-95 max-[720px]:bottom-5 max-[720px]:right-16"
+        className="fixed bottom-5 right-16 z-30 grid size-16 max-w-[42vw] place-items-center rounded-full bg-white transition-transform duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2 max-[720px]:bottom-5 max-[720px]:right-16"
         href="https://wa.me/?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20your%20courses."
         target="_blank"
         rel="noreferrer"
         aria-label="Chat with us on WhatsApp"
       >
-        <video className="block h-full w-full scale-[1.8] object-cover object-center" src="/videos/whatsapp.mp4" autoPlay loop muted playsInline aria-hidden="true" />
+        <span className="relative grid size-14 place-items-center rounded-full bg-[#25D366] text-white">
+          <MessageCircle size={36} strokeWidth={1.8} aria-hidden="true" />
+          <PhoneCall className="absolute" size={15} strokeWidth={2.4} aria-hidden="true" />
+        </span>
       </a>
 
       <Footer />

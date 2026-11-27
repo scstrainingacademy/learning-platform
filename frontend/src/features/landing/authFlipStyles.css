@@ -137,6 +137,34 @@
   font: 600 var(--font-size-small) Manrope, sans-serif;
 }
 .auth-login-identifier::placeholder { color: transparent; }
+.auth-otp {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.auth-otp-input {
+  box-sizing: border-box;
+  width: 42px;
+  min-width: 0;
+  max-width: 42px;
+  height: 48px;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  outline: 0;
+  background: #eceef3;
+  box-shadow: inset 3px 3px 7px #c5c8d0, inset -3px -3px 7px #fff;
+  color: #1b2233;
+  font: 600 18px Manrope, sans-serif;
+  text-align: center;
+  transition: box-shadow .2s ease;
+}
+.auth-otp-input:focus-visible {
+  box-shadow: inset 3px 3px 7px #c5c8d0, inset -3px -3px 7px #fff, 0 0 0 2px #6d28d9;
+}
 .auth-login-label {
   position: absolute;
   top: 50%;

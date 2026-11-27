@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { apiRequest } from '../services/api.js';
 
 function AdminLoginPage({ message, onLogin }) {
@@ -10,6 +10,8 @@ function AdminLoginPage({ message, onLogin }) {
   const [resetMessage, setResetMessage] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   const submitLogin = async (event) => {
     event.preventDefault();
@@ -112,9 +114,18 @@ function AdminLoginPage({ message, onLogin }) {
                       minLength="12"
                       onChange={(event) => setResetPassword(event.target.value)}
                       required
-                      type="password"
+                      type={showResetPassword ? 'text' : 'password'}
                       value={resetPassword}
                     />
+                    <button
+                      aria-label={showResetPassword ? 'Hide new password' : 'Show new password'}
+                      aria-pressed={showResetPassword}
+                      className="flex shrink-0 items-center justify-center border-0 bg-transparent p-1 text-[#8993a2] transition hover:text-[#762f3b] focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-offset-2 focus-visible:outline-[#3975c6]"
+                      onClick={() => setShowResetPassword((visible) => !visible)}
+                      type="button"
+                    >
+                      {showResetPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -148,9 +159,18 @@ function AdminLoginPage({ message, onLogin }) {
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder="Enter your password"
                         required
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={password}
                       />
+                      <button
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
+                        className="flex shrink-0 items-center justify-center border-0 bg-transparent p-1 text-[#8993a2] transition hover:text-[#762f3b] focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-offset-2 focus-visible:outline-[#3975c6]"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        type="button"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
                 </>
